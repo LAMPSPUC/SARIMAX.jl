@@ -1,0 +1,4 @@
+name = "Sarimax"
+uuid = "32cb7113-d955-45ac-bb89-2e20d5d4d2f9"
+authors = ["LuizFDuarte <luizduarte@lampsco.com>"]
+version = "0.1.0"
