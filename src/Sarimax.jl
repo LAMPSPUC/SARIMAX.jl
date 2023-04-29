@@ -1,6 +1,6 @@
 module Sarimax
 
-using JuMP, SCIP, Plots
+using JuMP, SCIP, Plots, TimeSeries, Ipopt, TimeSeries
 
 include("src/Parameters.jl")
 using .Parameters
@@ -32,26 +32,29 @@ function fit(y::Vector{Float64};silent::Bool=true,optimizer::DataType = SCIP.Opt
 
     return Models.arima(y;silent=silent)
 end
-# Testar Alpine(garante optimalidade)
 
-using ARFIMA, Distributions
-sigma = 0.1
+function SARIMA(y::TimeArray,p::Int64,d::Int64,q::Int64;silent::Bool=true)
+    return SARIMAModel(y,p,d,q;silent=true)
+end
 
-# Generate an ARMA(2,0) series
-n = 200
-phi = rand(Uniform(-0.99,0.99),3)
-size_phi = length(phi)
-y = arma(n, sigma, SVector{size_phi,Float64}(phi))
+function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer)
+    return Models.arima(model;silent=silent,optimizer=optimizer)
+end
+
+function predict!(model::SARIMAModel, stepsAhead::Int64=12)
+    return Models.arima(model;silent=silent,optimizer=optimizer)
+end
+
+using CSV, DataFrames, Plots, TimeSeries
+
+y = CSV.read("dataset.csv", DataFrame)
+y = TimeArray(y, timestamp = :date)
+
 plot(y)
-models , k = fit(y;silent=false,arimaType=ari)
-best_model = models[k]
-aiccs = map(x->x.aicc,models)
-println("Aicc: ",aiccs)
-Models.print(best_model)
-real_ϕ = [best_model.γ + best_model.ϕ[1]+1]
-foreach(j->push!(real_ϕ,best_model.ϕ[j]-best_model.ϕ[j-1]),[i for i=2:best_model.maxp-1])
-push!(real_ϕ,best_model.ϕ[end])
-println("Real ϕ = ",real_ϕ)
-fit_in_sample = best_model.fitInSample
-plot!(fit_in_sample)
+
+modelo = SARIMA(y,1,1,0)
+fit!(modelo)
+Models.print(modelo)
+
+
 end # module Sarimax

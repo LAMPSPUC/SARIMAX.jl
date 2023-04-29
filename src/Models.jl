@@ -1,8 +1,9 @@
 module Models
 
-using SCIP, JuMP, MathOptInterface, LinearAlgebra, Statistics, OffsetArrays, Distributions, GLMNet
+using SCIP,Ipopt, JuMP, MathOptInterface, LinearAlgebra, Statistics, OffsetArrays, Distributions, GLMNet, TimeSeries
 
-export sarimaxModel, arima, opt_ari, print
+
+export SARIMAModel, sarimaxModel, arima, opt_ari, print
 
 """
 
@@ -24,6 +25,44 @@ mutable struct SarimaxModel
     fitInSample::Vector{Float64}
     aicc::Float64
     silent::Bool
+end
+
+mutable struct SARIMAModel
+    y::TimeArray
+    p::Int64
+    d::Int64
+    q::Int64
+    c::Union{Float64,Nothing}
+    ϕ::Union{Vector{Float64},Nothing}
+    θ::Union{Vector{Float64},Nothing}
+    ϵ::Union{Vector{Float64},Nothing}
+    fitInSample::Union{TimeArray,Nothing}
+    forecast::Union{TimeArray,Nothing}
+    silent::Bool
+    function SARIMAModel(y::TimeArray,
+                        p::Int64,
+                        d::Int64,
+                        q::Int64;
+                        c::Union{Float64,Nothing}=nothing,
+                        ϕ::Union{Vector{Float64},Nothing}=nothing,
+                        θ::Union{Vector{Float64},Nothing}=nothing,
+                        ϵ::Union{Vector{Float64},Nothing}=nothing,
+                        fitInSample::Union{TimeArray,Nothing}=nothing,
+                        forecast::Union{TimeArray,Nothing}=nothing,
+                        silent::Bool=true)
+        @assert p >= 0
+        @assert d >= 0
+        @assert q >= 0
+        return new(y,p,d,q,c,ϕ,θ,ϵ,fitInSample,forecast,silent)
+    end
+end
+
+function print(model::SARIMAModel)
+    println("=================MODEL===============")
+    println("SARIMA ($(model.p), $(model.d) ,$(model.q))")
+    println("Estimated c       : ",model.c)
+    println("Estimated ϕ       : ", model.ϕ)
+    println("Estimated θ       : ",model.θ)
 end
 
 function print(model::SarimaxModel)
@@ -48,6 +87,14 @@ function print(model::Main.Models.SarimaxModel)
     println("Estimated δ       : ",model.δ)
     println("Estimated γ       : ",model.γ)
     println("Estimated ϕ       : ", model.ϕ)
+end
+
+function fill_fit_values!(model::SARIMAModel,c::Float64,ϕ::Vector{Float64},θ::Vector{Float64},ϵ::Vector{Float64},fitInSample::TimeArray)
+    model.c = c
+    model.ϕ = ϕ
+    model.θ = θ
+    model.ϵ = ϵ
+    model.fitInSample = fitInSample
 end
 
 function sarimaxModel(α,δ,γ,ϕ,θ,I,K,maxK,maxp,maxq,ϵ,fitInSample,aicc,silent)
@@ -280,6 +327,62 @@ function arima(y::Vector{Float64};maxp=6,maxq=6,maxK=8,silent=false,optimizer::D
     end
  
     return fitted_model
+end
+
+function arima(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer)
+    # diff y
+    diff_y = diff(model.y, differences=model.d)
+    T = length(diff_y)
+
+    # Normalizing arrays 
+    diff_y = (diff_y .- mean(values(diff_y)))./std(values(diff_y)) 
+    y_values = values(diff_y)
+
+    mod = Model(optimizer)
+    if silent 
+        set_silent(mod)
+    end
+
+    @variable(mod, ϕ[1:model.p])
+    @variable(mod, θ[1:model.q])
+    @variable(mod, ϵ[1:T])
+    @variable(mod, c)
+    for i in 1:model.q 
+        set_start_value(mod[:θ][i], 0) # since the opt ari does not have the MA component
+    end
+
+    @objective(mod, Min, sum(ϵ.^2))
+
+    lb = max(model.p,model.q) + 1
+    @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q) + ϵ[t])
+    @constraint(mod, [t=lb:T], y_values[t] == ŷ[t])
+    optimize!(mod)
+    termination_status(mod)
+    
+    fitInSample::TimeArray = TimeArray(timestamp(diff_y)[lb:end], OffsetArrays.no_offset_view(value.(ŷ)))
+
+    # plot(diff_y)
+    # plot!(fitInSample)
+    # plot(y)
+    # original_fit = lag(y,1) .+ fitInSample
+    # plot!(original_fit)
+
+    if model.d != 0 # We differenciated the timeseries
+       # Δyₜ = yₜ - y_t-1 => yₜ = Δyₜ + y_t-1
+       fitInSample = fitInSample .+ lag(model.y,1) 
+    end
+
+    fill_fit_values!(model,value(c),value.(ϕ),value.(θ),value.(ϵ),fitInSample)
+end
+
+function predict!(model::SARIMAModel, stepsAhead::Int64=1)
+    y_values = values(model.y)
+    T = length(y_values)
+    errors = model.ϵ
+    errors = vcat(errors,[0 for _=1:stepsAhead])
+    for _=1:stepsAhead
+        push!(y_values, model.c + sum(model.ϕ[i]*y_values[end-i+1] for i=1:model.p) + sum(model.θ[i]*errors[T-j+1] for j=1:model.q))
+    end
 end
 
 # function bic(ϵ::Float64,σ::Float64,K::Int64,N::Int64)
