@@ -32,9 +32,15 @@ mutable struct SARIMAModel
     p::Int64
     d::Int64
     q::Int64
+    seasonality::Int64
+    P::Int64
+    D::Int64
+    Q::Int64
     c::Union{Float64,Nothing}
     ϕ::Union{Vector{Float64},Nothing}
     θ::Union{Vector{Float64},Nothing}
+    Φ::Union{Vector{Float64},Nothing}
+    Θ::Union{Vector{Float64},Nothing}
     ϵ::Union{Vector{Float64},Nothing}
     fitInSample::Union{TimeArray,Nothing}
     forecast::Union{TimeArray,Nothing}
@@ -43,9 +49,15 @@ mutable struct SARIMAModel
                         p::Int64,
                         d::Int64,
                         q::Int64;
+                        seasonality::Int64=1,
+                        P::Int64 = 0,
+                        D::Int64 = 0,
+                        Q::Int64 = 0,
                         c::Union{Float64,Nothing}=nothing,
                         ϕ::Union{Vector{Float64},Nothing}=nothing,
                         θ::Union{Vector{Float64},Nothing}=nothing,
+                        Φ::Union{Vector{Float64},Nothing}=nothing,
+                        Θ::Union{Vector{Float64},Nothing}=nothing,
                         ϵ::Union{Vector{Float64},Nothing}=nothing,
                         fitInSample::Union{TimeArray,Nothing}=nothing,
                         forecast::Union{TimeArray,Nothing}=nothing,
@@ -53,16 +65,22 @@ mutable struct SARIMAModel
         @assert p >= 0
         @assert d >= 0
         @assert q >= 0
-        return new(y,p,d,q,c,ϕ,θ,ϵ,fitInSample,forecast,silent)
+        @assert P >= 0
+        @assert D >= 0
+        @assert Q >= 0
+        @assert seasonality >= 1
+        return new(y,p,d,q,seasonality,P,D,Q,c,ϕ,θ,Φ,Θ,ϵ,fitInSample,forecast,silent)
     end
 end
 
 function print(model::SARIMAModel)
     println("=================MODEL===============")
-    println("SARIMA ($(model.p), $(model.d) ,$(model.q))")
+    println("SARIMA ($(model.p), $(model.d) ,$(model.q))($(model.P), $(model.D) ,$(model.Q) s=$(model.seasonality))")
     println("Estimated c       : ",model.c)
     println("Estimated ϕ       : ", model.ϕ)
     println("Estimated θ       : ",model.θ)
+    println("Estimated Φ       : ", model.Φ)
+    println("Estimated θ       : ",model.Θ)
 end
 
 function print(model::SarimaxModel)
@@ -89,11 +107,20 @@ function print(model::Main.Models.SarimaxModel)
     println("Estimated ϕ       : ", model.ϕ)
 end
 
-function fill_fit_values!(model::SARIMAModel,c::Float64,ϕ::Vector{Float64},θ::Vector{Float64},ϵ::Vector{Float64},fitInSample::TimeArray)
+function fill_fit_values!(model::SARIMAModel,
+                        c::Float64,
+                        ϕ::Vector{Float64},
+                        θ::Vector{Float64},
+                        ϵ::Vector{Float64},
+                        fitInSample::TimeArray;
+                        Φ::Union{Vector{Float64},Nothing}=nothing,
+                        Θ::Union{Vector{Float64},Nothing}=nothing)
     model.c = c
     model.ϕ = ϕ
     model.θ = θ
     model.ϵ = ϵ
+    model.Φ = Φ
+    model.Θ = Θ
     model.fitInSample = fitInSample
 end
 
@@ -330,7 +357,12 @@ function arima(y::Vector{Float64};maxp=6,maxq=6,maxK=8,silent=false,optimizer::D
 end
 
 function arima(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer)
-    # diff y
+    # seasonal difference
+    diff_y = nothing
+    if model.seasonality > 1
+        diff_y = diff(model.y, differences=model.D)
+    end
+    # non seasonal diff y
     diff_y = diff(model.y, differences=model.d)
     T = length(diff_y)
 
@@ -345,16 +377,27 @@ function arima(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Op
 
     @variable(mod, ϕ[1:model.p])
     @variable(mod, θ[1:model.q])
+    @variable(mod,Φ[1:model.P])
+    @variable(mod,Θ[1:model.Q])
     @variable(mod, ϵ[1:T])
     @variable(mod, c)
+
     for i in 1:model.q 
-        set_start_value(mod[:θ][i], 0) # since the opt ari does not have the MA component
+        set_start_value(mod[:θ][i], 0) 
+    end
+
+    for i in 1:model.Q 
+        set_start_value(mod[:Θ][i], 0) 
     end
 
     @objective(mod, Min, sum(ϵ.^2))
 
-    lb = max(model.p,model.q) + 1
-    @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q) + ϵ[t])
+    lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
+    if model.seasonality > 1
+        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q) + sum(Φ[k]*y_values[t-(model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*y_values[t-(model.seasonality*w)] for w=1:model.Q) + ϵ[t])
+    else
+        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q) + ϵ[t])
+    end
     @constraint(mod, [t=lb:T], y_values[t] == ŷ[t])
     optimize!(mod)
     termination_status(mod)
@@ -367,12 +410,13 @@ function arima(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Op
     # original_fit = lag(y,1) .+ fitInSample
     # plot!(original_fit)
 
+    # TODO - Falta resolver a diferenciação sazonal
     if model.d != 0 # We differenciated the timeseries
        # Δyₜ = yₜ - y_t-1 => yₜ = Δyₜ + y_t-1
        fitInSample = fitInSample .+ lag(model.y,1) 
     end
 
-    fill_fit_values!(model,value(c),value.(ϕ),value.(θ),value.(ϵ),fitInSample)
+    fill_fit_values!(model,value(c),value.(ϕ),value.(θ),value.(ϵ),fitInSample;Φ=value.(Φ),Θ=value.(Θ))
 end
 
 function predict!(model::SARIMAModel, stepsAhead::Int64=1)
