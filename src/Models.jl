@@ -3,28 +3,51 @@ module Models
 using SCIP,Ipopt, JuMP, MathOptInterface, LinearAlgebra, Statistics, OffsetArrays, Distributions, GLMNet, TimeSeries
 
 
-export SARIMAModel, sarimaxModel, arima, opt_ari, print
+export SARIMAModel, OPTSARIMAModel, arima, opt_ari, print
 
 """
 
 Δyₜ = α + δt + γ y_(t-1) + ∑ ϕ_i Δy_(t-i) + ϵₜ + ∑ θ_j ϵ_(t-j)
 
 """
-mutable struct SarimaxModel
-    α::Float64
-    δ::Float64
-    γ::Float64
-    ϕ::Vector{Float64}
-    θ::Vector{Float64}
-    I::Vector{Float64}
-    K::Int64
-    maxK::Int64
-    maxp::Int64
-    maxq::Int64
-    ϵ::Vector{Float64}
-    fitInSample::Vector{Float64}
-    aicc::Float64
+mutable struct OPTSARIMAModel
+    y::TimeArray
+    α::Union{Float64,Nothing}
+    δ::Union{Float64,Nothing}
+    γ::Union{Float64,Nothing}
+    ϕ::Union{Vector{Float64},Nothing}
+    θ::Union{Vector{Float64},Nothing}
+    I::Union{Vector{Float64},Nothing}
+    K::Union{Int64,Nothing}
+    maxK::Union{Int64,Nothing}
+    maxp::Union{Int64,Nothing}
+    maxq::Union{Int64,Nothing}
+    ϵ::Union{Vector{Float64},Nothing}
+    fitInSample::Union{TimeArray,Nothing}
+    forecast::Union{TimeArray,Nothing}
+    aicc::Union{Float64,Nothing}
     silent::Bool
+    function OPTSARIMAModel(y::TimeArray;
+                            α::Union{Float64,Nothing}=nothing,
+                            δ::Union{Float64,Nothing}=nothing,
+                            γ::Union{Float64,Nothing}=nothing,
+                            ϕ::Union{Vector{Float64},Nothing}=nothing,
+                            θ::Union{Vector{Float64},Nothing}=nothing,
+                            I::Union{Vector{Float64},Nothing}=nothing,
+                            K::Union{Int64,Nothing}=nothing,
+                            maxK::Union{Int64,Nothing}=10,
+                            maxp::Union{Int64,Nothing}=13,
+                            maxq::Union{Int64,Nothing}=5,
+                            ϵ::Union{Vector{Float64},Nothing}=nothing,
+                            fitInSample::Union{TimeArray,Nothing}=nothing,
+                            forecast::Union{TimeArray,Nothing}=nothing,
+                            aicc::Union{Float64,Nothing}=nothing,
+                            silent::Bool=true)
+        @assert maxK >= 0
+        @assert maxp >= 0
+        @assert maxq >= 0
+        return new(y,α,δ,γ,ϕ,θ,I,K,maxK,maxp,maxq,ϵ,fitInSample,forecast,aicc,silent)
+    end
 end
 
 mutable struct SARIMAModel
@@ -83,7 +106,7 @@ function print(model::SARIMAModel)
     println("Estimated θ       : ",model.Θ)
 end
 
-function print(model::SarimaxModel)
+function print(model::OPTSARIMAModel)
     println("=================MODEL===============")
     println("Best K            : ", model.K)
     chosen_index = model.I .> 0
@@ -95,7 +118,7 @@ function print(model::SarimaxModel)
     println("Estimated ϕ       : ", model.ϕ)
 end
 
-function print(model::Main.Models.SarimaxModel)
+function print(model::Main.Models.OPTSARIMAModel)
     println("=================MODEL===============")
     println("Best K            : ", model.K)
     chosen_index = model.I .> 0
@@ -124,15 +147,29 @@ function fill_fit_values!(model::SARIMAModel,
     model.fitInSample = fitInSample
 end
 
-function sarimaxModel(α,δ,γ,ϕ,θ,I,K,maxK,maxp,maxq,ϵ,fitInSample,aicc,silent)
+function fill_fit_values!(model::OPTSARIMAModel,
+                        auxModel::OPTSARIMAModel)
+    model.α = auxModel.α
+    model.δ = auxModel.δ
+    model.γ = auxModel.γ
+    model.ϕ = auxModel.ϕ
+    model.θ = auxModel.θ
+    model.ϵ = auxModel.ϵ
+    model.I = auxModel.I
+    model.K = auxModel.K
+    model.aicc = auxModel.aicc
+    model.fitInSample = auxModel.fitInSample
+end
+
+function OPTSARIMAModel(α,δ,γ,ϕ,θ,I,K,maxK,maxp,maxq,ϵ,fitInSample,aicc,silent)
     if (maxK < 0 || maxp < 0 || maxq < 0)
         error("Negative values not allowed")
     end
 
-    return SarimaxModel(α,δ,γ,ϕ,θ,I,K,maxK,maxp,maxq,ϵ,fitInSample,aicc,silent)
+    return OPTSARIMAModel(α,δ,γ,ϕ,θ,I,K,maxK,maxp,maxq,ϵ,fitInSample,aicc,silent)
 end
 
-function sarimaxModel!(model,α,δ,γ,ϕ,θ,I,K,ϵ,fitInSample,aicc)
+function OPTSARIMAModel!(model,α,δ,γ,ϕ,θ,I,K,ϵ,fitInSample,aicc)
     model.α = α
     model.δ = δ
     model.γ = γ
@@ -152,62 +189,69 @@ function get_opt_λ(y::Vector{Float64}, X::Matrix{Float64})
     return cv_results.lambda[argmin(cv_results.meanloss)]
 end
 
-function opt_ari(y;maxp=6, maxK=15, silent=false, optimizer::DataType=SCIP.Optimizer, reg::Bool=false)
+function opt_ari(model::OPTSARIMAModel;silent=false, optimizer::DataType=SCIP.Optimizer, reg::Bool=false)
+    y_values = values(model.y)
     # Diff y
-    Δy = vcat([NaN], diff(y)) 
-    T = length(y)
+    diff_y = diff(model.y,differences=1)
+    T = length(diff_y)
+    diff_y_values = values(diff_y)
     K = 1
-    model = Model(optimizer)
-    if solver_name(model) == "Gurobi"
-        set_optimizer_attribute(model, "NonConvex", 2)
+    mod = Model(optimizer)
+    if solver_name(mod) == "Gurobi"
+        set_optimizer_attribute(mod, "NonConvex", 2)
     end
     if silent
-        set_silent(model)
+        set_silent(mod)
     end
-    @variables(model, begin
-        epi
+    @variables(mod, begin
+        fobj
         α
         δ
         γ
         K_var
-        ϕ[1:maxp-1] # AR part  
-        I[1:1+maxp], Bin # 2 + maxp - 1
+        ϕ[1:model.maxp-1] # AR part  
+        I[1:1+model.maxp], Bin # 2 + maxp - 1
         ϵ[t = 1:T]
     end)
 
     all_coefs = vcat([δ],[γ],ϕ)
-    @constraint(model,[t = maxp+1:T], Δy[t] == α + δ*t + γ*y[t-1] + sum(ϕ[i]*Δy[t-i] for i=1:maxp-1) + ϵ[t])
-    @constraint(model, [i = 1:1+maxp], all_coefs[i]*(1 - I[i]) == 0) # WARNING: Non linear
-    @constraint(model, sum(I) <= K_var)
-    @constraint(model, epi == sum(ϵ[i]^2 for i in 1:T))
-    @expression(model, fit[t=maxp+1:T], α + δ*t + γ*y[t-1] + sum(ϕ[i]*Δy[t-i] for i=1:maxp-1) + ϵ[t])
-    X = vcat(zeros(1),y[2:end])
-    for i=3:maxp
-        X = hcat(X,vcat(zeros(i-1),y[i:end]))
+    lb = model.maxp + 1
+    @expression(mod, ŷ[t=lb:T], α + δ*t + γ*y_values[t-1] + sum(ϕ[i]*diff_y_values[t-i] for i=1:model.maxp-1) + ϵ[t])
+    @constraint(mod,[t=lb:T], diff_y_values[t] == ŷ[t])
+    @constraint(mod, [i = 1:1+model.maxp], all_coefs[i]*(1 - I[i]) == 0) # WARNING: Non linear
+    @constraint(mod, sum(I) <= K_var)
+    @constraint(mod, fobj == sum(ϵ[i]^2 for i in 1:T))
+
+    X = vcat(zeros(1),y_values[2:end])
+    for i=3:model.maxp
+        X = hcat(X,vcat(zeros(i-1),y_values[i:end]))
     end
-    λ = get_opt_λ(y,X)
+    λ = get_opt_λ(y_values,X)
     reg_multiplier = reg ? 1 : 0
-    @objective(model, Min, epi + reg_multiplier *  1/(2*λ) * sum(all_coefs.^2)) # Calibrar Ver com o André
+
+    @objective(mod, Min, fobj + reg_multiplier *  1/(2*λ) * sum(all_coefs.^2)) # Calibrar Ver com o André
     fix.(K_var, K)
-    optimize!(model)
+    optimize!(mod)
 
     aiccs = Vector{Float64}()
     aic = 2*K + T*log(var(value.(ϵ)))
     aicc_ = (aic + ((2*K^2 +2*K)/(T - K - 1)))
-    fitted_model = sarimaxModel(value(α),value(δ), value(γ),value.(ϕ),Vector{Float64}(),value.(I),floor(Int64,sum(value.(I))),maxK,maxp,0,value.(ϵ),vcat([NaN for _=1:maxp], OffsetArrays.no_offset_view(value.(fit))),aicc_,silent)
+    fitInSample::TimeArray = TimeArray(timestamp(diff_y)[lb:end], OffsetArrays.no_offset_view(value.(ŷ)))
+    fitted_model = OPTSARIMAModel(model.y;α=value(α),δ=value(δ),γ=value(γ),ϕ=value.(ϕ),I=value.(I),K=floor(Int64,sum(value.(I))),ϵ=value.(ϵ),fitInSample=fitInSample,aicc=aicc_)
     fitted_models = [fitted_model]
     push!(aiccs, aicc_)
     K+=1
-    while K <= maxK
+    while K <= model.maxK
         fix.(K_var, K)
-        optimize!(model)
+        optimize!(mod)
         @info("Solved for K = $K")
 
         aic = 2*K + T*log(var(value.(ϵ)))
         aicc_ = (aic + ((2*K^2 +2*K)/(T - K - 1)))
         push!(aiccs, aicc_)
 
-        fitted_model = sarimaxModel(value(α),value(δ), value(γ),value.(ϕ),Vector{Float64}(),value.(I),floor(Int64,sum(value.(I))),maxK,maxp,0,value.(ϵ),vcat([NaN for _=1:maxp], OffsetArrays.no_offset_view(value.(fit))),aicc_,silent)
+        fitInSample = TimeArray(timestamp(diff_y)[lb:end], OffsetArrays.no_offset_view(value.(ŷ)))
+        fitted_model = OPTSARIMAModel(model.y;α=value(α),δ=value(δ),γ=value(γ),ϕ=value.(ϕ),I=value.(I),K=floor(Int64,sum(value.(I))),ϵ=value.(ϵ),fitInSample=fitInSample,aicc=aicc_)
         push!(fitted_models, fitted_model)
         
         if aiccs[end] >= aiccs[end - 1]
@@ -220,7 +264,14 @@ function opt_ari(y;maxp=6, maxK=15, silent=false, optimizer::DataType=SCIP.Optim
         K += 1
     end
 
-    return fitted_models, findfirst(x->x==minimum(aiccs), aiccs)
+    # best model
+    best_model = fitted_models[K-1]
+    adf = best_model.γ/std(best_model.ϵ)
+    if adf <= -3.60 # t distribuition for size T=50
+        best_model.fitInSample = best_model.fitInSample .+ lag(model.y,1)
+    end
+    fill_fit_values!(model,best_model)
+    #return fitted_models, findfirst(x->x==minimum(aiccs), aiccs)
 end
 
 
@@ -260,7 +311,7 @@ function ari(y;maxp=5, K=1, silent=false, optimizer::DataType=SCIP.Optimizer)
     return value.(ϵ), value.(ϕ)
 end
 
-function arima_start_values(opt_ari_model::SarimaxModel, model, maxq)
+function arima_start_values(opt_ari_model::OPTSARIMAModel, model, maxq)
     set_start_value(model[:α], opt_ari_model.α)
     set_start_value(model[:δ], opt_ari_model.δ)
     set_start_value(model[:γ], opt_ari_model.γ)
@@ -331,11 +382,11 @@ function arima(y::Vector{Float64};maxp=6,maxq=6,maxK=8,silent=false,optimizer::D
     aiccs = Vector{Float64}()
     aic = 2*K + T*log(var(value.(ϵ)))
     aicc_ = (aic + ((2*K^2 +2*K)/(T - K - 1)))
-    fitted_model = sarimaxModel(value(α),value(δ), value(γ),value.(ϕ),value.(θ),value.(I),K,maxK,maxp,maxq,value.(ϵ),vcat([NaN for _=1:max(maxp,maxq)],  OffsetArrays.no_offset_view(value.(fit))),aicc_,silent)
+    fitted_model = OPTSARIMAModel(value(α),value(δ), value(γ),value.(ϕ),value.(θ),value.(I),K,maxK,maxp,maxq,value.(ϵ),vcat([NaN for _=1:max(maxp,maxq)],  OffsetArrays.no_offset_view(value.(fit))),aicc_,silent)
     push!(aiccs, aicc_)
     K+=1
     while K <= maxK
-        sarimaxModel!(fitted_model,value(α),value(δ),value(γ),value.(ϕ),value.(θ),value.(I),K-1,value.(ϵ),vcat([NaN for _=1:max(maxp,maxq)], OffsetArrays.no_offset_view(value.(fit))),aicc_)
+        OPTSARIMAModel!(fitted_model,value(α),value(δ),value(γ),value.(ϕ),value.(θ),value.(I),K-1,value.(ϵ),vcat([NaN for _=1:max(maxp,maxq)], OffsetArrays.no_offset_view(value.(fit))),aicc_)
         # Start Viable Point
         arima_start_values(fitted_aris[min(K,length(fitted_aris))], model, maxq)
         fix.(K_var, K)
@@ -499,7 +550,7 @@ end
     
 #     optimize!(model)
 #     @info("Solved")
-#     fitted_model = sarimaxModel(value(α),value(δ), value(γ),value.(ϕ),value.(θ),value.(I),value(K),maxK,maxp,maxq,value.(ϵ),vcat([NaN for _=1:max(maxp,maxq)],  OffsetArrays.no_offset_view(value.(fit))),aicc_,silent)
+#     fitted_model = OPTSARIMAModel(value(α),value(δ), value(γ),value.(ϕ),value.(θ),value.(I),value(K),maxK,maxp,maxq,value.(ϵ),vcat([NaN for _=1:max(maxp,maxq)],  OffsetArrays.no_offset_view(value.(fit))),aicc_,silent)
 #     return fitted_model
 # end
 
