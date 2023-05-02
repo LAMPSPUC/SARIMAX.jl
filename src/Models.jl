@@ -267,7 +267,8 @@ function opt_ari(model::OPTSARIMAModel;silent=false, optimizer::DataType=SCIP.Op
     # best model
     best_model = fitted_models[K-1]
     adf = best_model.γ/std(best_model.ϵ)
-    if adf <= -3.60 # t distribuition for size T=50
+    @info("ADF Test: $(adf)")
+    if adf >= -3.60 # t distribuition for size T=50
         best_model.fitInSample = best_model.fitInSample .+ TimeSeries.lag(model.y,1)
     end
     fill_fit_values!(model,best_model)
@@ -525,6 +526,19 @@ function predict!(model::SARIMAModel, stepsAhead::Int64=1)
             y_values[T+i] += y_values[T+i-1] 
         end
     end
+    model.forecast = TimeArray(forecast_dates,y_values[T+1:end])
+end
+
+function predict!(model::OPTSARIMAModel, stepsAhead::Int64=1)
+    y_values = copy(values(model.y))
+    T = length(y_values)
+
+    for t=T+1:T+stepsAhead
+        # y_t = α + δt + (γ+1+ϕ_1)y_t-1 + Σ(phi_j - phi_j-1)y_t-j - ϕ_p-1 y_t-p
+        forec = model.α + model.δ*t + (model.γ+1+model.ϕ[1])*y_values[t-1] + sum((model.ϕ[j]-model.ϕ[j-1])*y_values[t-j] for j=2:model.maxp-1) - model.ϕ[model.maxp-1]*y_values[t-model.maxp]
+        push!(y_values,forec)
+    end
+    forecast_dates = [ timestamp(model.y)[T] + Dates.Month(i) for i=1:stepsAhead ]
     model.forecast = TimeArray(forecast_dates,y_values[T+1:end])
 end
 
