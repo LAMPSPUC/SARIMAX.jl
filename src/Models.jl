@@ -1,6 +1,6 @@
 module Models
 
-using SCIP,Ipopt, JuMP, MathOptInterface, LinearAlgebra, Statistics, OffsetArrays, Distributions, GLMNet, TimeSeries
+using SCIP,Ipopt, JuMP, MathOptInterface, LinearAlgebra, Statistics, OffsetArrays, Distributions, GLMNet, TimeSeries, Lasso
 
 
 export SARIMAModel, OPTSARIMAModel, arima, opt_ari, print
@@ -268,12 +268,33 @@ function opt_ari(model::OPTSARIMAModel;silent=false, optimizer::DataType=SCIP.Op
     best_model = fitted_models[K-1]
     adf = best_model.γ/std(best_model.ϵ)
     if adf <= -3.60 # t distribuition for size T=50
-        best_model.fitInSample = best_model.fitInSample .+ lag(model.y,1)
+        best_model.fitInSample = best_model.fitInSample .+ TimeSeries.lag(model.y,1)
     end
     fill_fit_values!(model,best_model)
     #return fitted_models, findfirst(x->x==minimum(aiccs), aiccs)
 end
 
+function opt_ari_lasso()
+    p = 13
+    # y = float.(TimeArray(airp, timestamp = :month))
+    lag_y = TimeSeries.rename!(TimeSeries.lag(y,1),[:lag_y])
+    Δy = TimeSeries.rename!(diff(y),:Δy)
+    X = lag_y
+    penalty_factor = [0.5]
+    for i = 1:p
+        penalty_factor = vcat(penalty_factor, [i])
+        lag_Δy_i = TimeSeries.rename!(TimeSeries.lag(y,i),[Symbol("Δy_tminus$i")])
+        X = merge(X,lag_Δy_i)
+    end
+    data = merge(Δy,X)
+
+    X_lasso = values(data)[:,2:end]
+    y_lasso = values(data)[:,1]
+    model = Lasso.fit(LassoModel, X_lasso, y_lasso; penalty_factor = penalty_factor)
+    penalty_factor = 1 ./ (0.01 .+ abs.(Lasso.coef(model)[2:end]))
+    model = Lasso.fit(LassoModel, X_lasso, y_lasso; penalty_factor = penalty_factor)
+    
+end
 
 function ari(y;maxp=5, K=1, silent=false, optimizer::DataType=SCIP.Optimizer)
     # Diff y
@@ -445,7 +466,7 @@ function arima(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Op
 
     lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
     if model.seasonality > 1
-        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q) + sum(Φ[k]*y_values[t-(model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*y_values[t-(model.seasonality*w)] for w=1:model.Q) + ϵ[t])
+        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q) + sum(Φ[k]*y_values[t-(model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*errors[t-(model.seasonality*w)] for w=1:model.Q) + ϵ[t])
     else
         @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q) + ϵ[t])
     end
@@ -464,20 +485,47 @@ function arima(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Op
     # TODO - Falta resolver a diferenciação sazonal
     if model.d != 0 # We differenciated the timeseries
        # Δyₜ = yₜ - y_t-1 => yₜ = Δyₜ + y_t-1
-       fitInSample = fitInSample .+ lag(model.y,1) 
+       fitInSample = fitInSample .+ TimeSeries.lag(model.y,1) 
     end
 
     fill_fit_values!(model,value(c),value.(ϕ),value.(θ),value.(ϵ),fitInSample;Φ=value.(Φ),Θ=value.(Θ))
 end
 
 function predict!(model::SARIMAModel, stepsAhead::Int64=1)
-    y_values = values(model.y)
-    T = length(y_values)
+    diff_y = diff(model.y, differences=model.d)
+    T = length(diff_y)
+
+    # Normalizing arrays 
+    diff_y = (diff_y .- mean(values(diff_y)))./std(values(diff_y)) 
+    y_values = copy(values(diff_y))
+
     errors = model.ϵ
     errors = vcat(errors,[0 for _=1:stepsAhead])
     for _=1:stepsAhead
-        push!(y_values, model.c + sum(model.ϕ[i]*y_values[end-i+1] for i=1:model.p) + sum(model.θ[i]*errors[T-j+1] for j=1:model.q))
+        y_for = model.c
+        if model.p > 0
+            y_for += sum(model.ϕ[i]*y_values[end-i+1] for i=1:model.p)
+        end
+        if model.q > 0
+            y_for += sum(model.θ[j]*errors[T-j+1] for j=1:model.q)
+        end
+        if model.P > 0
+            y_for += sum(model.Φ[k]*y_values[end-(model.seasonality*k)] for k=1:model.P)
+        end
+        if model.Q > 0
+            y_for += sum(model.Θ[w]*errors[T-(model.seasonality*w)] for w=1:model.Q)
+        end
+        push!(y_values, y_for)
     end
+
+    forecast_dates = [ timestamp(model.y)[T] + Dates.Month(i) for i=1:stepsAhead ]
+    if model.d != 0 # We differenciated the timeseries
+        y_values[T+1] += values(model.y)[end]
+        for i=2:stepsAhead
+            y_values[T+i] += y_values[T+i-1] 
+        end
+    end
+    model.forecast = TimeArray(forecast_dates,y_values[T+1:end])
 end
 
 # function bic(ϵ::Float64,σ::Float64,K::Int64,N::Int64)
