@@ -430,63 +430,78 @@ function arima(y::Vector{Float64};maxp=6,maxq=6,maxK=8,silent=false,optimizer::D
 end
 
 function arima(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer)
+    diff_y = model.y
     # seasonal difference
-    diff_y = nothing
-    if model.seasonality > 1
-        diff_y = diff(model.y, differences=model.D)
+    if model.D > 0
+        @info("Seasonal difference")
+        for _ in 1:model.D
+            diff_y = diff_y .- TimeSeries.lag(diff_y, model.seasonality)
+        end
+        diff_y = TimeArray(timestamp(diff_y)[model.D*model.seasonality+1:end],values(diff_y)[model.D*model.seasonality+1:end])
     end
+
     # non seasonal diff y
-    diff_y = diff(model.y, differences=model.d)
+    @info("Difference")
+    diff_y = TimeSeries.diff(diff_y, differences=model.d)
+
     T = length(diff_y)
 
     # Normalizing arrays 
-    diff_y = (diff_y .- mean(values(diff_y)))./std(values(diff_y)) 
+    # diff_y = (diff_y .- mean(values(diff_y)))./std(values(diff_y)) 
     y_values = values(diff_y)
 
     mod = Model(optimizer)
     if silent 
         set_silent(mod)
     end
-
-    @variable(mod, ϕ[1:model.p])
-    @variable(mod, θ[1:model.q])
+    
+    @variable(mod,ϕ[1:model.p])
+    @variable(mod,θ[1:model.q])
     @variable(mod,Φ[1:model.P])
     @variable(mod,Θ[1:model.Q])
-    @variable(mod, ϵ[1:T])
-    @variable(mod, c)
-
+    @variable(mod,ϵ[1:T])
+    @variable(mod,c)
+    
     for i in 1:model.q 
         set_start_value(mod[:θ][i], 0) 
     end
-
+    
     for i in 1:model.Q 
         set_start_value(mod[:Θ][i], 0) 
     end
-
-    @objective(mod, Min, sum(ϵ.^2))
-
+    
+    @objective(mod, Min, sum(ϵ.^2))# + 0.1*(sum(θ.^2)+sum(Θ.^2)))
+    
     lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
+    fix.(ϵ[1:lb],0.0)
     if model.seasonality > 1
-        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q) + sum(Φ[k]*y_values[t-(model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*errors[t-(model.seasonality*w)] for w=1:model.Q) + ϵ[t])
+        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q) + sum(Φ[k]*y_values[t-(model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t-(model.seasonality*w)] for w=1:model.Q))
     else
-        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q) + ϵ[t])
+        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q))
     end
-    @constraint(mod, [t=lb:T], y_values[t] == ŷ[t])
+    @constraint(mod, [t=lb:T], y_values[t] == ŷ[t] + ϵ[t])
     optimize!(mod)
     termination_status(mod)
     
+    # TODO: - The reconciliation works for just d,D <= 1
     fitInSample::TimeArray = TimeArray(timestamp(diff_y)[lb:end], OffsetArrays.no_offset_view(value.(ŷ)))
-
-    # plot(diff_y)
-    # plot!(fitInSample)
-    # plot(y)
-    # original_fit = lag(y,1) .+ fitInSample
-    # plot!(original_fit)
-
-    # TODO - Falta resolver a diferenciação sazonal
-    if model.d != 0 # We differenciated the timeseries
+    if model.d > 0 # We differenciated the timeseries
        # Δyₜ = yₜ - y_t-1 => yₜ = Δyₜ + y_t-1
-       fitInSample = fitInSample .+ TimeSeries.lag(model.y,1) 
+       for _ in 1:model.d
+        fitInSample = fitInSample .+ TimeSeries.lag(model.y,1)
+       end
+    end
+
+    if model.D > 0 # We differenciated the timeseries
+        # Δyₜ = yₜ - y_t-12 => yₜ = Δyₜ + y_t-12
+        for _ in 1:model.D
+            fitInSample = fitInSample .+ TimeSeries.lag(model.y,model.seasonality)
+        end
+    end
+
+    if model.D > 0 && model.d > 0 # We differenciated the timeseries
+        # Δyₜ = yₜ - y_t-12 => yₜ = Δyₜ + y_t-12
+        fitInSample = fitInSample .- TimeSeries.lag(model.y,model.d + model.seasonality)
     end
 
     fill_fit_values!(model,value(c),value.(ϕ),value.(θ),value.(ϵ),fitInSample;Φ=value.(Φ),Θ=value.(Θ))
@@ -497,7 +512,7 @@ function predict!(model::SARIMAModel, stepsAhead::Int64=1)
     T = length(diff_y)
 
     # Normalizing arrays 
-    diff_y = (diff_y .- mean(values(diff_y)))./std(values(diff_y)) 
+    # diff_y = (diff_y .- mean(values(diff_y)))./std(values(diff_y))
     y_values = copy(values(diff_y))
 
     errors = model.ϵ
