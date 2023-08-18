@@ -1,6 +1,6 @@
 module Sarimax
 
-import Base: print
+import Base: print, copy
 
 using JuMP
 using SCIP
@@ -26,9 +26,11 @@ export SARIMAModel
 # Export functions
 export splitTrainTest
 export print
+export copy
 export fit!
 export predict!
 export SARIMA
+export differentiate
 
 
 end # module Sarimax
