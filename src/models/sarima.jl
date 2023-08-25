@@ -88,6 +88,7 @@ function copy(y::TimeArray)
 end
 
 function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
+    series = TimeArray(timestamp(series),values(series))
     if D > 0
         @info("Seasonal difference")
         diff_values = []
@@ -116,32 +117,39 @@ function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
     return series
 end
 
-function integrate(series::TimeArray, diff_series::Vector{Float64}, d::Int=0, D::Int=0, s::Int=1)
+function integrate(series::TimeArray, diff_series::Vector{Fl}, d::Int=0, D::Int=0, s::Int=1) where Fl<:Real
+    series = TimeArray(timestamp(series),values(series))
     stepsAhead = length(diff_series)
-    y = values(series)
+    y = deepcopy(values(series))
     T = length(y)
     y = vcat(y,diff_series)
-    @info("Non seasonal integration")
-    for _ in 1:d
-        # Δyₜ = yₜ - y_t-1 ⇒ yₜ = Δyₜ + y_t-1
-        for i=T+1:T+stepsAhead
-            y[i] = y[i] + y[i-1]
+    for i=T+1:T+stepsAhead
+        # @info("Non seasonal integration")
+        recovered_value = y[i]
+        # Δyt = y[t] - y[t-1] - y[t-12] + y[t-12-1]
+        for _ in 1:d
+            # Δyₜ = yₜ - y_t-1 ⇒ yₜ = Δyₜ + y_t-1
+            recovered_value += y[i-1]
         end
-    end
-
-    @info("Seasonal integration")
-    for _ in 1:D
-        # Δyₜ = yₜ - y_t-s ⇒ yₜ = Δyₜ + y_t-s
-        for i=T+1:T+stepsAhead
-            y[i] = y[i] + y[i-s]
+        # @info("Seasonal integration")
+        for _ in 1:D
+            # Δyₜ = yₜ - y_t-s ⇒ yₜ = Δyₜ + y_t-s
+            recovered_value += y[i-s]
         end
+        # @info("Correction for seasonal integration")
+        if D > 0 && d > 0
+            # Δyₜ = yₜ - y_t-s ⇒ yₜ = Δyₜ + y_t-s
+            recovered_value -= y[i-s-1]
+        end
+        y[i] = recovered_value
     end
+    
     return y[T+1:end]
 end
 
 
 function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, normalize::Bool=false)
-    diff_y = differentiate(TimeArray(timestamp(model.y),values(model.y)),model.d,model.D, model.seasonality)
+    diff_y = differentiate(model.y,model.d,model.D, model.seasonality)
 
     T = length(diff_y)
 
@@ -172,17 +180,17 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     for i in 1:model.Q 
         set_start_value(mod[:Θ][i], 0) 
     end
-    
-    @objective(mod, Min, sum(ϵ.^2))# + 0.1*(sum(θ.^2)+sum(Θ.^2)))
-    
+
+    @objective(mod, Min, mean(ϵ.^2))# + 0.1*(sum(θ.^2)+sum(Θ.^2)))
     lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
-    fix.(ϵ[1:lb],0.0)
+    fix.(ϵ[1:lb-1],0.0)
     if model.seasonality > 1
         @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q) + sum(Φ[k]*y_values[t-(model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t-(model.seasonality*w)] for w=1:model.Q))
     else
         @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q))
     end
     @constraint(mod, [t=lb:T], y_values[t] == ŷ[t] + ϵ[t])
+    @constraint(mod, sum(ϵ) == 0)
     optimize!(mod)
     termination_status(mod)
     
@@ -224,39 +232,36 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         end
         fitInSample = TimeArray(timestamp(fitInSample), fitted_values)
     end
-
     fill_fit_values!(model,value(c),value.(ϕ),value.(θ),value.(ϵ),fitInSample;Φ=value.(Φ),Θ=value.(Θ))
 end
 
 function predict!(model::SARIMAModel, stepsAhead::Int64=1)
     diff_y = differentiate(model.y,model.d,model.D,model.seasonality)
-
-    T = length(diff_y)
-
-    y_values = copy(values(diff_y))
-
-    errors = model.ϵ
-    errors = vcat(errors,[0 for _=1:stepsAhead])
-    for t =0:stepsAhead-1
+    y_values::Vector{Float64} = deepcopy(values(diff_y))
+    # DAVI OLHA ESSA GAMBIARRA POR FAVOR
+    # errors = deepcopy(model.ϵ .+ model.c)
+    errors = deepcopy(model.ϵ)
+    for _= 1:stepsAhead
         y_for = model.c
         if model.p > 0
-            # ∑ϕᵢyₜ-i
+            # ∑ϕᵢyₜ -i
             y_for += sum(model.ϕ[i]*y_values[end-i+1] for i=1:model.p)
         end
         if model.q > 0
             # ∑θᵢϵₜ-i
-            y_for += sum(model.θ[j]*errors[T+t-j+1] for j=1:model.q)
+            y_for += sum(model.θ[j]*errors[end-j+1] for j=1:model.q)
         end
         if model.P > 0
             # ∑Φₖyₜ-(s*k)
-            y_for += sum(model.Φ[k]*y_values[end-(model.seasonality*k)] for k=1:model.P)
+            y_for += sum(model.Φ[k]*y_values[end-(model.seasonality*k)+1] for k=1:model.P)
         end
         if model.Q > 0
             # ∑Θₖϵₜ-(s*k)
-            y_for += sum(model.Θ[w]*errors[T+t-(model.seasonality*w)] for w=1:model.Q)
+            y_for += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q)
         end
+        push!(errors, 0)
         push!(y_values, y_for)
     end
-    
-    model.forecast = y_values[end-stepsAhead+1:end]#integrate(model.y, y_values[end-stepsAhead+1:end], model.d, model.D, model.seasonality)
+    forecast_values = integrate(model.y, y_values[end-stepsAhead+1:end], model.d, model.D, model.seasonality)
+    model.forecast = forecast_values
 end

@@ -31,6 +31,7 @@ export fit!
 export predict!
 export SARIMA
 export differentiate
+export integrate
 
 
 end # module Sarimax
