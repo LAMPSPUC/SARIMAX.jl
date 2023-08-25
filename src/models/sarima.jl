@@ -13,6 +13,7 @@ mutable struct SARIMAModel <: SarimaxModel
     Φ::Union{Vector{Float64},Nothing}
     Θ::Union{Vector{Float64},Nothing}
     ϵ::Union{Vector{Float64},Nothing}
+    σ²::Float64
     fitInSample::Union{TimeArray,Nothing}
     forecast::Union{Array{Float64},Nothing}
     silent::Bool
@@ -30,6 +31,7 @@ mutable struct SARIMAModel <: SarimaxModel
                         Φ::Union{Vector{Float64},Nothing}=nothing,
                         Θ::Union{Vector{Float64},Nothing}=nothing,
                         ϵ::Union{Vector{Float64},Nothing}=nothing,
+                        σ²::Float64=0.0,
                         fitInSample::Union{TimeArray,Nothing}=nothing,
                         forecast::Union{TimeArray,Nothing}=nothing,
                         silent::Bool=true)
@@ -40,7 +42,7 @@ mutable struct SARIMAModel <: SarimaxModel
         @assert D >= 0
         @assert Q >= 0
         @assert seasonality >= 1
-        return new(y,p,d,q,seasonality,P,D,Q,c,ϕ,θ,Φ,Θ,ϵ,fitInSample,forecast,silent)
+        return new(y,p,d,q,seasonality,P,D,Q,c,ϕ,θ,Φ,Θ,ϵ,σ²,fitInSample,forecast,silent)
     end
 end
 
@@ -52,6 +54,7 @@ function print(model::SARIMAModel)
     println("Estimated θ       : ",model.θ)
     println("Estimated Φ       : ", model.Φ)
     println("Estimated θ       : ",model.Θ)
+    println("Residuals σ²      : ",model.σ²)
 end
 
 function SARIMA(y::TimeArray,
@@ -71,6 +74,7 @@ function fill_fit_values!(model::SARIMAModel,
                         ϕ::Vector{Float64},
                         θ::Vector{Float64},
                         ϵ::Vector{Float64},
+                        σ²::Float64,
                         fitInSample::TimeArray;
                         Φ::Union{Vector{Float64},Nothing}=nothing,
                         Θ::Union{Vector{Float64},Nothing}=nothing)
@@ -78,6 +82,7 @@ function fill_fit_values!(model::SARIMAModel,
     model.ϕ = ϕ
     model.θ = θ
     model.ϵ = ϵ
+    model.σ²= σ²
     model.Φ = Φ
     model.Θ = Θ
     model.fitInSample = fitInSample
@@ -232,7 +237,8 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         end
         fitInSample = TimeArray(timestamp(fitInSample), fitted_values)
     end
-    fill_fit_values!(model,value(c),value.(ϕ),value.(θ),value.(ϵ),fitInSample;Φ=value.(Φ),Θ=value.(Θ))
+    residuals_variance = var(value.(ϵ)[lb:end])
+    fill_fit_values!(model,value(c),value.(ϕ),value.(θ),value.(ϵ),residuals_variance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
 end
 
 function predict!(model::SARIMAModel, stepsAhead::Int64=1)
