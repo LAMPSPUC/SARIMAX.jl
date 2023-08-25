@@ -271,3 +271,44 @@ function predict!(model::SARIMAModel, stepsAhead::Int64=1)
     forecast_values = integrate(model.y, y_values[end-stepsAhead+1:end], model.d, model.D, model.seasonality)
     model.forecast = forecast_values
 end
+
+function predict(model::SARIMAModel, stepsAhead::Int64=1, σ²::Float64=0.0)
+    diff_y = differentiate(model.y,model.d,model.D,model.seasonality)
+    y_values::Vector{Float64} = deepcopy(values(diff_y))
+    # DAVI OLHA ESSA GAMBIARRA POR FAVOR
+    # errors = deepcopy(model.ϵ .+ model.c)
+    errors = deepcopy(model.ϵ)
+    for _= 1:stepsAhead
+        y_for = model.c
+        if model.p > 0
+            # ∑ϕᵢyₜ -i
+            y_for += sum(model.ϕ[i]*y_values[end-i+1] for i=1:model.p)
+        end
+        if model.q > 0
+            # ∑θᵢϵₜ-i
+            y_for += sum(model.θ[j]*errors[end-j+1] for j=1:model.q)
+        end
+        if model.P > 0
+            # ∑Φₖyₜ-(s*k)
+            y_for += sum(model.Φ[k]*y_values[end-(model.seasonality*k)+1] for k=1:model.P)
+        end
+        if model.Q > 0
+            # ∑Θₖϵₜ-(s*k)
+            y_for += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q)
+        end
+        ϵₜ = rand(Normal(0,σ²))
+        y_for += ϵₜ
+        push!(errors, ϵₜ)
+        push!(y_values, y_for)
+    end
+    forecast_values = integrate(model.y, y_values[end-stepsAhead+1:end], model.d, model.D, model.seasonality)
+    return forecast_values
+end
+
+function simulate(model::SARIMAModel, stepsAhead::Int64=1, numScenarios::Int64=200)
+    scenarios::Vector{Vector{Float64}} = []
+    for scenario in 1:numScenarios
+        push!(scenarios, predict(model,stepsAhead, model.σ²))
+    end
+    return scenarios
+end
