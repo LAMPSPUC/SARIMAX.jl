@@ -195,7 +195,6 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q))
     end
     @constraint(mod, [t=lb:T], y_values[t] == ŷ[t] + ϵ[t])
-    @constraint(mod, sum(ϵ) == 0)
     optimize!(mod)
     termination_status(mod)
     
@@ -244,8 +243,6 @@ end
 function predict!(model::SARIMAModel, stepsAhead::Int64=1)
     diff_y = differentiate(model.y,model.d,model.D,model.seasonality)
     y_values::Vector{Float64} = deepcopy(values(diff_y))
-    # DAVI OLHA ESSA GAMBIARRA POR FAVOR
-    # errors = deepcopy(model.ϵ .+ model.c)
     errors = deepcopy(model.ϵ)
     for _= 1:stepsAhead
         y_for = model.c
@@ -275,8 +272,6 @@ end
 function predict(model::SARIMAModel, stepsAhead::Int64=1, σ²::Float64=0.0)
     diff_y = differentiate(model.y,model.d,model.D,model.seasonality)
     y_values::Vector{Float64} = deepcopy(values(diff_y))
-    # DAVI OLHA ESSA GAMBIARRA POR FAVOR
-    # errors = deepcopy(model.ϵ .+ model.c)
     errors = deepcopy(model.ϵ)
     for _= 1:stepsAhead
         y_for = model.c
@@ -296,7 +291,7 @@ function predict(model::SARIMAModel, stepsAhead::Int64=1, σ²::Float64=0.0)
             # ∑Θₖϵₜ-(s*k)
             y_for += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q)
         end
-        ϵₜ = rand(Normal(0,σ²))
+        ϵₜ = rand(Normal(0,sqrt(σ²)))
         y_for += ϵₜ
         push!(errors, ϵₜ)
         push!(y_values, y_for)
