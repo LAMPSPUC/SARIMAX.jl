@@ -92,6 +92,26 @@ function copy(y::TimeArray)
     return TimeArray(copy(timestamp(y)),copy(values(y)))
 end
 
+"""
+    fit!(
+        model::SARIMAModel;
+        silent::Bool=true,
+        optimizer::DataType=Ipopt.Optimizer,
+        normalize::Bool=false
+    )
+
+Estimate the Sarima model parameters via non linear least squares. The resulting optimal
+parameters as well as the resisuals and the model σ² are stored within the model. 
+
+# Example
+```jldoctest
+julia> airPassengers = loadDataset(AIR_PASSENGERS)
+
+julia> model = SARIMA(airPassengers,0,1,1;seasonality=12,P=0,D=1,Q=1)
+
+julia> fit!(model)
+```
+"""
 function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, normalize::Bool=false)
     diff_y = differentiate(model.y,model.d,model.D, model.seasonality)
 
@@ -129,9 +149,9 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
     fix.(ϵ[1:lb-1],0.0)
     if model.seasonality > 1
-        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q) + sum(Φ[k]*y_values[t-(model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t-(model.seasonality*w)] for w=1:model.Q))
+        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q) + sum(Φ[k]*y_values[t - (model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q))
     else
-        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t-i] for i=1:model.p) + sum(θ[j]*ϵ[t-j] for j=1:model.q))
+        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q))
     end
     @constraint(mod, [t=lb:T], y_values[t] == ŷ[t] + ϵ[t])
     optimize!(mod)
@@ -179,6 +199,26 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     fill_fit_values!(model,value(c),value.(ϕ),value.(θ),value.(ϵ),residuals_variance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
 end
 
+"""
+    predict!(
+        model::SARIMAModel,
+        stepsAhead::Int64=1
+    )
+
+Predicts the SARIMA model for the next `stepsAhead` periods.
+The resulting forecast is stored within the model in the `forecast` field.
+
+# Example
+```jldoctest
+julia> airPassengers = loadDataset(AIR_PASSENGERS)
+
+julia> model = SARIMA(airPassengers,0,1,1;seasonality=12,P=0,D=1,Q=1)
+
+julia> fit!(model)
+
+julia> predict!(model; stepsAhead=12)
+```
+"""
 function predict!(model::SARIMAModel, stepsAhead::Int64=1)
     diff_y = differentiate(model.y,model.d,model.D,model.seasonality)
     y_values::Vector{Float64} = deepcopy(values(diff_y))
@@ -208,7 +248,28 @@ function predict!(model::SARIMAModel, stepsAhead::Int64=1)
     model.forecast = forecast_values
 end
 
-function predict(model::SARIMAModel, stepsAhead::Int64=1, σ²::Float64=0.0)
+
+"""
+    predict(
+        model::SARIMAModel, 
+        stepsAhead::Int64 = 1, 
+    )
+
+Predicts the SARIMA model for the next `stepsAhead` periods assuming that the model`s estimated σ².
+Returns the forecasted values.
+
+# Example
+```jldoctest
+julia> airPassengers = loadDataset(AIR_PASSENGERS)
+
+julia> model = SARIMA(airPassengers,0,1,1;seasonality=12,P=0,D=1,Q=1)
+
+julia> fit!(model)
+
+julia> forecastedValues = predict(model, stepsAhead=12)
+```
+"""
+function predict(model::SARIMAModel, stepsAhead::Int64=1)
     diff_y = differentiate(model.y,model.d,model.D,model.seasonality)
     y_values::Vector{Float64} = deepcopy(values(diff_y))
     errors = deepcopy(model.ϵ)
@@ -239,10 +300,32 @@ function predict(model::SARIMAModel, stepsAhead::Int64=1, σ²::Float64=0.0)
     return forecast_values
 end
 
+
+"""
+    simulate(
+        model::SARIMAModel, 
+        stepsAhead::Int64 = 1, 
+        numScenarios::Int64 = 200
+    )
+
+Simulates the SARIMA model for the next `stepsAhead` periods assuming that the model`s estimated σ².
+Returns a vector of `numScenarios` scenarios of the forecasted values.
+
+# Example
+```jldoctest
+julia> airPassengers = loadDataset(AIR_PASSENGERS)
+
+julia> model = SARIMA(airPassengers,0,1,1;seasonality=12,P=0,D=1,Q=1)
+
+julia> fit!(model)
+
+julia> scenarios = simulate(model, stepsAhead=12, numScenarios=1000)
+```
+"""
 function simulate(model::SARIMAModel, stepsAhead::Int64=1, numScenarios::Int64=200)
     scenarios::Vector{Vector{Float64}} = []
     for _=1:numScenarios
-        push!(scenarios, predict(model,stepsAhead, model.σ²))
+        push!(scenarios, predict(model, stepsAhead))
     end
     return scenarios
 end
