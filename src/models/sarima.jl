@@ -69,7 +69,7 @@ function SARIMA(y::TimeArray,
     return SARIMAModel(y,p,d,q;seasonality,P,D,Q,silent)
 end
 
-function fill_fit_values!(model::SARIMAModel,
+function fillFitValues!(model::SARIMAModel,
                         c::Float64,
                         ϕ::Vector{Float64},
                         θ::Vector{Float64},
@@ -113,17 +113,17 @@ julia> fit!(model)
 ```
 """
 function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, normalize::Bool=false)
-    diff_y = differentiate(model.y,model.d,model.D, model.seasonality)
+    diffY = differentiate(model.y,model.d,model.D, model.seasonality)
 
-    T = length(diff_y)
+    T = length(diffY)
 
     # Normalizing arrays 
     if normalize
         @info("Normalizing time series")
-        diff_y = (diff_y .- mean(values(diff_y)))./std(values(diff_y)) 
+        diffY = (diffY .- mean(values(diffY)))./std(values(diffY)) 
     end
 
-    y_values = values(diff_y)
+    yValues = values(diffY)
 
     mod = Model(optimizer)
     if silent 
@@ -149,54 +149,54 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
     fix.(ϵ[1:lb-1],0.0)
     if model.seasonality > 1
-        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q) + sum(Φ[k]*y_values[t - (model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q))
+        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q) + sum(Φ[k]*yValues[t - (model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q))
     else
-        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*y_values[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q))
+        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q))
     end
-    @constraint(mod, [t=lb:T], y_values[t] == ŷ[t] + ϵ[t])
+    @constraint(mod, [t=lb:T], yValues[t] == ŷ[t] + ϵ[t])
     optimize!(mod)
     termination_status(mod)
     
     # TODO: - The reconciliation works for just d,D <= 1
-    fitInSample::TimeArray = TimeArray(timestamp(diff_y)[lb:end], OffsetArrays.no_offset_view(value.(ŷ)))
+    fitInSample::TimeArray = TimeArray(timestamp(diffY)[lb:end], OffsetArrays.no_offset_view(value.(ŷ)))
     
     if model.d > 0 # We differenciated the timeseries
         # Δyₜ = yₜ - y_t-1 => yₜ = Δyₜ + y_t-1
-        fitted_values = values(fitInSample)
-        y_original = values(model.y)
+        fittedValues = values(fitInSample)
+        yOriginal = values(model.y)
         for _=1:model.d
-            original_index = findfirst(ts -> ts == timestamp(fitInSample)[1], timestamp(model.y))
+            originalIndex = findfirst(ts -> ts == timestamp(fitInSample)[1], timestamp(model.y))
             for j=1:length(fitInSample)
-                fitted_values[j] += y_original[original_index+(j-1)-1]
+                fittedValues[j] += yOriginal[originalIndex+(j-1)-1]
             end
         end
-        fitInSample = TimeArray(timestamp(fitInSample), fitted_values)
+        fitInSample = TimeArray(timestamp(fitInSample), fittedValues)
     end
 
     if model.D > 0 # We differenciated the timeseries
         # Δyₜ = yₜ - y_t-12 => yₜ = Δyₜ + y_t-12
-        fitted_values = values(fitInSample)
-        y_original = values(model.y)
+        fittedValues = values(fitInSample)
+        yOriginal = values(model.y)
         for i=1:model.D
-            original_index = findfirst(ts -> ts == timestamp(fitInSample)[1], timestamp(model.y))
+            originalIndex = findfirst(ts -> ts == timestamp(fitInSample)[1], timestamp(model.y))
             for j=1:length(fitInSample)
-                fitted_values[j] += y_original[original_index+(j-1)-model.seasonality*i]
+                fittedValues[j] += yOriginal[originalIndex+(j-1)-model.seasonality*i]
             end
         end
-        fitInSample = TimeArray(timestamp(fitInSample), fitted_values)
+        fitInSample = TimeArray(timestamp(fitInSample), fittedValues)
     end
 
     if model.D > 0 && model.d > 0 # We differenciated the timeseries
-        fitted_values = values(fitInSample)
-        y_original = values(model.y)
+        fittedValues = values(fitInSample)
+        yOriginal = values(model.y)
         for j=1:length(fitInSample)
-            original_index = findfirst(ts -> ts == timestamp(fitInSample)[1], timestamp(model.y))
-            fitted_values[j] -= y_original[original_index+(j-1)-(model.seasonality+1)]
+            originalIndex = findfirst(ts -> ts == timestamp(fitInSample)[1], timestamp(model.y))
+            fittedValues[j] -= yOriginal[originalIndex+(j-1)-(model.seasonality+1)]
         end
-        fitInSample = TimeArray(timestamp(fitInSample), fitted_values)
+        fitInSample = TimeArray(timestamp(fitInSample), fittedValues)
     end
-    residuals_variance = var(value.(ϵ)[lb:end])
-    fill_fit_values!(model,value(c),value.(ϕ),value.(θ),value.(ϵ),residuals_variance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
+    residualsVariance = var(value.(ϵ)[lb:end])
+    fillFitValues!(model,value(c),value.(ϕ),value.(θ),value.(ϵ),residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
 end
 
 """
@@ -220,31 +220,31 @@ julia> predict!(model; stepsAhead=12)
 ```
 """
 function predict!(model::SARIMAModel, stepsAhead::Int64=1)
-    diff_y = differentiate(model.y,model.d,model.D,model.seasonality)
-    y_values::Vector{Float64} = deepcopy(values(diff_y))
+    diffY = differentiate(model.y,model.d,model.D,model.seasonality)
+    yValues::Vector{Float64} = deepcopy(values(diffY))
     errors = deepcopy(model.ϵ)
     for _= 1:stepsAhead
-        y_for = model.c
+        forecastedValue = model.c
         if model.p > 0
             # ∑ϕᵢyₜ -i
-            y_for += sum(model.ϕ[i]*y_values[end-i+1] for i=1:model.p)
+            forecastedValue += sum(model.ϕ[i]*yValues[end-i+1] for i=1:model.p)
         end
         if model.q > 0
             # ∑θᵢϵₜ-i
-            y_for += sum(model.θ[j]*errors[end-j+1] for j=1:model.q)
+            forecastedValue += sum(model.θ[j]*errors[end-j+1] for j=1:model.q)
         end
         if model.P > 0
             # ∑Φₖyₜ-(s*k)
-            y_for += sum(model.Φ[k]*y_values[end-(model.seasonality*k)+1] for k=1:model.P)
+            forecastedValue += sum(model.Φ[k]*yValues[end-(model.seasonality*k)+1] for k=1:model.P)
         end
         if model.Q > 0
             # ∑Θₖϵₜ-(s*k)
-            y_for += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q)
+            forecastedValue += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q)
         end
         push!(errors, 0)
-        push!(y_values, y_for)
+        push!(yValues, forecastedValue)
     end
-    forecast_values = integrate(model.y, y_values[end-stepsAhead+1:end], model.d, model.D, model.seasonality)
+    forecast_values = integrate(model.y, yValues[end-stepsAhead+1:end], model.d, model.D, model.seasonality)
     model.forecast = forecast_values
 end
 
@@ -270,33 +270,33 @@ julia> forecastedValues = predict(model, stepsAhead=12)
 ```
 """
 function predict(model::SARIMAModel, stepsAhead::Int64=1)
-    diff_y = differentiate(model.y,model.d,model.D,model.seasonality)
-    y_values::Vector{Float64} = deepcopy(values(diff_y))
+    diffY = differentiate(model.y,model.d,model.D,model.seasonality)
+    yValues::Vector{Float64} = deepcopy(values(diffY))
     errors = deepcopy(model.ϵ)
     for _= 1:stepsAhead
-        y_for = model.c
+        forecastedValue = model.c
         if model.p > 0
             # ∑ϕᵢyₜ -i
-            y_for += sum(model.ϕ[i]*y_values[end-i+1] for i=1:model.p)
+            forecastedValue += sum(model.ϕ[i]*yValues[end-i+1] for i=1:model.p)
         end
         if model.q > 0
             # ∑θᵢϵₜ-i
-            y_for += sum(model.θ[j]*errors[end-j+1] for j=1:model.q)
+            forecastedValue += sum(model.θ[j]*errors[end-j+1] for j=1:model.q)
         end
         if model.P > 0
             # ∑Φₖyₜ-(s*k)
-            y_for += sum(model.Φ[k]*y_values[end-(model.seasonality*k)+1] for k=1:model.P)
+            forecastedValue += sum(model.Φ[k]*yValues[end-(model.seasonality*k)+1] for k=1:model.P)
         end
         if model.Q > 0
             # ∑Θₖϵₜ-(s*k)
-            y_for += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q)
+            forecastedValue += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q)
         end
         ϵₜ = rand(Normal(0,sqrt(σ²)))
-        y_for += ϵₜ
+        forecastedValue += ϵₜ
         push!(errors, ϵₜ)
-        push!(y_values, y_for)
+        push!(yValues, forecastedValue)
     end
-    forecast_values = integrate(model.y, y_values[end-stepsAhead+1:end], model.d, model.D, model.seasonality)
+    forecast_values = integrate(model.y, yValues[end-stepsAhead+1:end], model.d, model.D, model.seasonality)
     return forecast_values
 end
 
