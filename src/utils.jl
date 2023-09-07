@@ -1,3 +1,22 @@
+"""
+    differentiate(
+        series::TimeArray,
+        d::Int=0, 
+        D::Int=0, 
+        s::Int=1
+    )
+
+    Differentiates a TimeArray `series` `d` times and `D` times with a seasonal difference of `s` periods.
+
+    This method only works with d,D ∈ {0,1}.
+
+# Example
+```jldoctest
+julia> airPassengers = loadDataset(AIR_PASSENGERS)
+
+julia> stationaryAirPassengers = differentiate(airPassengers, d=1, D=1, s=12)
+```
+"""
 function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
     series = TimeArray(timestamp(series),values(series))
     if D > 0
@@ -28,12 +47,25 @@ function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
     return series
 end
 
-function integrate(series::TimeArray, diff_series::Vector{Fl}, d::Int=0, D::Int=0, s::Int=1) where Fl<:Real
+"""
+    integrate(
+        series::TimeArray, 
+        diffSeries::Vector{Fl}, 
+        d::Int = 0, 
+        D::Int = 0, 
+        s::Int = 1
+    ) where Fl<:Real
+
+    Integrates a vector of a differentiated series `diffSeries` `d` times and `D` times with a seasonal difference of `s` periods assuming the original previous observations are in `series`.
+
+    This method only works with d,D ∈ {0,1}.
+"""
+function integrate(series::TimeArray, diffSeries::Vector{Fl}, d::Int=0, D::Int=0, s::Int=1) where Fl<:Real
     series = TimeArray(timestamp(series),values(series))
-    stepsAhead = length(diff_series)
+    stepsAhead = length(diffSeries)
     y = deepcopy(values(series))
     T = length(y)
-    y = vcat(y,diff_series)
+    y = vcat(y,diffSeries)
     for i=T+1:T+stepsAhead
         # @info("Non seasonal integration")
         recoveredValue = y[i]
