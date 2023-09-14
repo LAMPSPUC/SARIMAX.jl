@@ -196,7 +196,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         fitInSample = TimeArray(timestamp(fitInSample), fittedValues)
     end
     residualsVariance = var(value.(ϵ)[lb:end])
-    fillFitValues!(model,value(c),value.(ϕ),value.(θ),value.(ϵ),residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
+    fillFitValues!(model,value(c),value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
 end
 
 """
