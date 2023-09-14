@@ -89,3 +89,18 @@ function integrate(series::TimeArray, diffSeries::Vector{Fl}, d::Int=0, D::Int=0
     
     return y[T+1:end]
 end
+
+"""
+    loglikelihood(
+        model::SARIMAModel
+    )
+
+    Calculates the loglikelihood of a SARIMA model based on the following formula:
+    -0.5 * (T * log(2π) + T * log(σ²) + sum(ϵ.^2 ./ σ²))
+
+    This method only works with d,D ∈ {0,1}.
+"""
+function loglikelihood(model::SARIMAModel)
+    T = length(model.y)
+    return -0.5 * (T * log(2π) + T * log(model.σ²) + sum(model.ϵ.^2 ./ model.σ²))
+end
