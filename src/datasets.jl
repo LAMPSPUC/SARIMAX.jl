@@ -60,8 +60,8 @@ julia> airPassengers = loadDataset(airPassengersDf)
 function loadDataset(df::DataFrame)
     auxiliarDF = deepcopy(df)
     if !(:date in propertynames(auxiliarDF))
-        @warning("The DataFrame does not have a column named 'date'.")
-        @warnig("Creating a date column with the index of the DataFrame")
+        @info("The DataFrame does not have a column named 'date'.")
+        @info("Creating a date column with the index of the DataFrame")
         auxiliarDF[!,:date] = [Date(i) for i=1:size(auxiliarDF,1)]
     end
     y = TimeArray(auxiliarDF, timestamp = :date)
