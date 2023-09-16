@@ -97,10 +97,28 @@ end
 
     Calculates the loglikelihood of a SARIMA model based on the following formula:
     -0.5 * (T * log(2π) + T * log(σ²) + sum(ϵ.^2 ./ σ²))
-
-    This method only works with d,D ∈ {0,1}.
 """
-function loglikelihood(model::SARIMAModel)
-    T = length(model.y)
+function loglikelihood(model::SarimaxModel)
+    T = length(model.ϵ)
     return -0.5 * (T * log(2π) + T * log(model.σ²) + sum(model.ϵ.^2 ./ model.σ²))
+end
+
+"""
+    loglike(
+        model::SARIMAModel
+    )
+
+    For a set of independent data points {x_1, x_2, ..., x_n} assumed to be drawn from a probability distribution with a PDF f(x; θ), where θ represents the model parameters, the log-likelihood LL(θ) is calculated as the sum of the log PDFs:
+
+    LL(θ) = Σ[log(f(x_i; θ))]
+
+    Here:
+
+    LL(θ) is the log-likelihood.
+    Σ denotes the summation over all data points from i = 1 to n.
+    log() represents the natural logarithm.
+    f(x_i; θ) is the probability density function of the model evaluated at data point x_i with parameter θ.
+"""
+function loglike(model::SarimaxModel)
+    return sum(logpdf.(Normal(0, sqrt(model.σ²)), model.ϵ))
 end

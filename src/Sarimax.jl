@@ -39,6 +39,8 @@ export differentiate
 export integrate
 export simulate
 export loadDataset
+export loglikelihood
+export loglike
 
 
 end # module Sarimax
