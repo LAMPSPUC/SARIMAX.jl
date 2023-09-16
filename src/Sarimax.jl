@@ -22,6 +22,7 @@ include("datasets.jl")
 include("utils.jl")
 include("models/sarima.jl")
 include("exceptions.jl")
+include("fit.jl")
 
 # Export types
 export SARIMAModel
@@ -46,6 +47,7 @@ export simulate
 export loadDataset
 export loglikelihood
 export loglike
+export hasFitMethods
 
 
 end # module Sarimax
