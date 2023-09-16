@@ -99,6 +99,8 @@ end
     -0.5 * (T * log(2π) + T * log(σ²) + sum(ϵ.^2 ./ σ²))
 """
 function loglikelihood(model::SarimaxModel)
+    !hasFitMethods(SarimaxModel) && throw(MissingMethodImplementation("fit!"))
+    !isFitted(model) && throw(ModelNotFitted())
     T = length(model.ϵ)
     return -0.5 * (T * log(2π) + T * log(model.σ²) + sum(model.ϵ.^2 ./ model.σ²))
 end
@@ -120,5 +122,7 @@ end
     f(x_i; θ) is the probability density function of the model evaluated at data point x_i with parameter θ.
 """
 function loglike(model::SarimaxModel)
+    !hasFitMethods(SarimaxModel) && throw(MissingMethodImplementation("fit!"))
+    !isFitted(model) && throw(ModelNotFitted())
     return sum(logpdf.(Normal(0, sqrt(model.σ²)), model.ϵ))
 end

@@ -92,6 +92,17 @@ function copy(y::TimeArray)
     return TimeArray(copy(timestamp(y)),copy(values(y)))
 end
 
+function isFitted(model::SARIMAModel)
+    hasResiduals = !isnothing(model.ϵ)
+    hasFitInSample = !isnothing(model.fitInSample)
+    estimatedAR = (model.p == 0) || !isnothing(model.ϕ)
+    estimatedMA = (model.q == 0) || !isnothing(model.θ)
+    estimatedSeasonalAR = (model.P == 0) || !isnothing(model.Φ)
+    estimatedSeasonalMA = (model.Q == 0) || !isnothing(model.Θ)
+    estimatedIntercept = !isnothing(model.c)
+    return hasResiduals && hasFitInSample && estimatedAR && estimatedMA && estimatedSeasonalAR && estimatedSeasonalMA && estimatedIntercept
+end
+
 """
     fit!(
         model::SARIMAModel;
@@ -113,6 +124,7 @@ julia> fit!(model)
 ```
 """
 function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, normalize::Bool=false)
+    isFitted(model) && @info("The model has already been fitted. Overwriting the previous results")
     diffY = differentiate(model.y,model.d,model.D, model.seasonality)
 
     T = length(diffY)
@@ -220,6 +232,8 @@ julia> predict!(model; stepsAhead=12)
 ```
 """
 function predict!(model::SARIMAModel, stepsAhead::Int64=1)
+    !isFitted(model) && throw(ModelNotFitted())
+
     diffY = differentiate(model.y,model.d,model.D,model.seasonality)
     yValues::Vector{Float64} = deepcopy(values(diffY))
     errors = deepcopy(model.ϵ)
@@ -270,6 +284,8 @@ julia> forecastedValues = predict(model, stepsAhead=12)
 ```
 """
 function predict(model::SARIMAModel, stepsAhead::Int64=1)
+    !isFitted(model) && throw(ModelNotFitted())
+
     diffY = differentiate(model.y,model.d,model.D,model.seasonality)
     yValues::Vector{Float64} = deepcopy(values(diffY))
     errors = deepcopy(model.ϵ)
@@ -323,6 +339,7 @@ julia> scenarios = simulate(model, stepsAhead=12, numScenarios=1000)
 ```
 """
 function simulate(model::SARIMAModel, stepsAhead::Int64=1, numScenarios::Int64=200)
+    !isFitted(model) && throw(ModelNotFitted())
     scenarios::Vector{Vector{Float64}} = []
     for _=1:numScenarios
         push!(scenarios, predict(model, stepsAhead))
