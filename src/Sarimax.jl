@@ -48,6 +48,10 @@ export loadDataset
 export loglikelihood
 export loglike
 export hasFitMethods
+export hasHyperparametersMethods
+export aic
+export aicc
+export bic
 
 
 end # module Sarimax
