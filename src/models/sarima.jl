@@ -16,6 +16,7 @@ mutable struct SARIMAModel <: SarimaxModel
     σ²::Float64
     fitInSample::Union{TimeArray,Nothing}
     forecast::Union{Array{Float64},Nothing}
+    allowMean::Bool
     silent::Bool
     function SARIMAModel(y::TimeArray,
                         p::Int64,
@@ -34,7 +35,8 @@ mutable struct SARIMAModel <: SarimaxModel
                         σ²::Float64=0.0,
                         fitInSample::Union{TimeArray,Nothing}=nothing,
                         forecast::Union{TimeArray,Nothing}=nothing,
-                        silent::Bool=true)
+                        silent::Bool=true,
+                        allowMean::Bool=true)
         @assert p >= 0
         @assert d >= 0
         @assert q >= 0
@@ -42,18 +44,18 @@ mutable struct SARIMAModel <: SarimaxModel
         @assert D >= 0
         @assert Q >= 0
         @assert seasonality >= 1
-        return new(y,p,d,q,seasonality,P,D,Q,c,ϕ,θ,Φ,Θ,ϵ,σ²,fitInSample,forecast,silent)
+        return new(y,p,d,q,seasonality,P,D,Q,c,ϕ,θ,Φ,Θ,ϵ,σ²,fitInSample,forecast,silent,allowMean)
     end
 end
 
 function print(model::SARIMAModel)
     println("=================MODEL===============")
     println("SARIMA ($(model.p), $(model.d) ,$(model.q))($(model.P), $(model.D) ,$(model.Q) s=$(model.seasonality))")
-    println("Estimated c       : ",model.c)
-    println("Estimated ϕ       : ", model.ϕ)
-    println("Estimated θ       : ",model.θ)
-    println("Estimated Φ       : ", model.Φ)
-    println("Estimated θ       : ",model.Θ)
+    model.allowMean && println("Estimated c       : ",model.c)
+    model.p != 0    && println("Estimated ϕ       : ", model.ϕ)
+    model.q != 0    && println("Estimated θ       : ",model.θ)
+    model.P != 0    && println("Estimated Φ       : ", model.Φ)
+    model.Q != 0    && println("Estimated θ       : ",model.Θ)
     println("Residuals σ²      : ",model.σ²)
 end
 
@@ -65,8 +67,9 @@ function SARIMA(y::TimeArray,
                 P::Int64 = 0,
                 D::Int64 = 0,
                 Q::Int64 = 0,
-                silent::Bool=true)
-    return SARIMAModel(y,p,d,q;seasonality,P,D,Q,silent)
+                silent::Bool=true,
+                allowMean::Bool=true)
+    return SARIMAModel(y,p,d,q;seasonality,P,D,Q,silent,allowMean)
 end
 
 function fillFitValues!(model::SARIMAModel,
