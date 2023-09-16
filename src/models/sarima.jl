@@ -95,6 +95,15 @@ function copy(y::TimeArray)
     return TimeArray(copy(timestamp(y)),copy(values(y)))
 end
 
+
+"""
+    isFitted(
+        model::SARIMAModel
+    )
+
+    Returns true if the SARIMA model has been fitted.
+
+"""
 function isFitted(model::SARIMAModel)
     hasResiduals = !isnothing(model.ϵ)
     hasFitInSample = !isnothing(model.fitInSample)
@@ -102,8 +111,22 @@ function isFitted(model::SARIMAModel)
     estimatedMA = (model.q == 0) || !isnothing(model.θ)
     estimatedSeasonalAR = (model.P == 0) || !isnothing(model.Φ)
     estimatedSeasonalMA = (model.Q == 0) || !isnothing(model.Θ)
-    estimatedIntercept = !isnothing(model.c)
+    estimatedIntercept =  !model.allowMean || !isnothing(model.c)
     return hasResiduals && hasFitInSample && estimatedAR && estimatedMA && estimatedSeasonalAR && estimatedSeasonalMA && estimatedIntercept
+end
+
+
+"""
+    getHyperparametersNumber(
+        model::SARIMAModel
+    )
+
+    Returns the number of hyperparameters of a SARIMA model.
+
+"""
+function getHyperparametersNumber(model::SARIMAModel)
+    k = (model.allowMean) ? 1 : 0
+    return model.p + model.q + model.P + model.Q + k
 end
 
 """
