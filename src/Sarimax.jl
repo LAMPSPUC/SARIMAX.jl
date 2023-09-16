@@ -1,6 +1,6 @@
 module Sarimax
 
-import Base: print, copy
+import Base: print, copy, showerror
 
 using JuMP
 using SCIP
@@ -21,9 +21,14 @@ abstract type SarimaxModel end
 include("datasets.jl")
 include("utils.jl")
 include("models/sarima.jl")
+include("exceptions.jl")
 
 # Export types
 export SARIMAModel
+
+# Export Exceptions/Errors
+export ModelNotFitted
+export MissingMethodImplementation
 
 # Export enums
 export Datasets
