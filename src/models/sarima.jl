@@ -16,8 +16,8 @@ mutable struct SARIMAModel <: SarimaxModel
     σ²::Float64
     fitInSample::Union{TimeArray,Nothing}
     forecast::Union{Array{Float64},Nothing}
-    allowMean::Bool
     silent::Bool
+    allowMean::Bool
     function SARIMAModel(y::TimeArray,
                         p::Int64,
                         d::Int64,
@@ -69,7 +69,7 @@ function SARIMA(y::TimeArray,
                 Q::Int64 = 0,
                 silent::Bool=true,
                 allowMean::Bool=true)
-    return SARIMAModel(y,p,d,q;seasonality,P,D,Q,silent,allowMean)
+    return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,silent=silent,allowMean=allowMean)
 end
 
 function fillFitValues!(model::SARIMAModel,
@@ -91,8 +91,12 @@ function fillFitValues!(model::SARIMAModel,
     model.fitInSample = fitInSample
 end
 
-function copy(y::TimeArray)
+function Base.copy(y::TimeArray)
     return TimeArray(copy(timestamp(y)),copy(values(y)))
+end
+
+function Base.deepcopy(y::TimeArray)
+    return TimeArray(deepcopy(timestamp(y)),deepcopy(values(y)))
 end
 
 
@@ -174,13 +178,18 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     @variable(mod,Θ[1:model.Q])
     @variable(mod,ϵ[1:T])
     @variable(mod,c)
+    (model.allowMean) || @constraint(mod,0 <= c <= 0.0) 
+
+    if solver_name(mod) == "Gurobi"
+        set_optimizer_attribute(mod, "NonConvex", 2)
+    end
     
     for i in 1:model.q 
-        set_start_value(mod[:θ][i], 0) 
+        set_start_value(mod[:θ][i], 0.0) 
     end
     
     for i in 1:model.Q 
-        set_start_value(mod[:Θ][i], 0) 
+        set_start_value(mod[:Θ][i], 0.0) 
     end
 
     @objective(mod, Min, mean(ϵ.^2))# + 0.1*(sum(θ.^2)+sum(Θ.^2)))
@@ -193,7 +202,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     end
     @constraint(mod, [t=lb:T], yValues[t] == ŷ[t] + ϵ[t])
     optimize!(mod)
-    termination_status(mod)
+    # @info(termination_status(mod))
     
     # TODO: - The reconciliation works for just d,D <= 1
     fitInSample::TimeArray = TimeArray(timestamp(diffY)[lb:end], OffsetArrays.no_offset_view(value.(ŷ)))
@@ -371,4 +380,295 @@ function simulate(model::SARIMAModel, stepsAhead::Int64=1, numScenarios::Int64=2
         push!(scenarios, predict(model, stepsAhead))
     end
     return scenarios
+end
+
+
+
+"""
+    auto(
+        y::TimeArray;
+        seasonality::Int64=1,
+        d::Int64 = -1,
+        D::Int64 = -1,
+        maxp::Int64 = 5,
+        maxd::Int64 = 2,
+        maxq::Int64 = 5,
+        maxP::Int64 = 2,
+        maxD::Int64 = 1,
+        maxQ::Int64 = 2,
+        informationCriteria::String = "aic",
+        allowMean::Bool = true,
+        integrationTest::String = "kpss",
+        seasonalIntegrationTest::String = "seas",
+    )
+
+Automatically fits the best [`SARIMA`](@ref) model according to the best information criteria 
+
+
+# References
+* Hyndman, RJ and Khandakar. 
+Automatic time series forecasting: The forecast package for R.
+Journal of Statistical Software, 26(3), 2008.
+
+"""
+function auto(
+    y::TimeArray;
+    seasonality::Int64=1,
+    d::Int64 = -1,
+    D::Int64 = -1,
+    maxp::Int64 = 5,
+    maxd::Int64 = 2,
+    maxq::Int64 = 5,
+    maxP::Int64 = 2,
+    maxD::Int64 = 1,
+    maxQ::Int64 = 2,
+    informationCriteria::String = "aicc",
+    allowMean::Bool = true,
+    integrationTest::String = "kpss",
+    seasonalIntegrationTest::String = "seas",
+)
+    @assert seasonality >= 1
+    @assert d >= -1
+    @assert d <= maxd
+    @assert D >= -1
+    @assert D <= maxD
+    @assert maxp >= 0
+    @assert maxd >= 0
+    @assert maxq >= 0
+    @assert maxP >= 0
+    @assert maxD >= 0
+    @assert maxQ >= 0
+    @assert informationCriteria ∈ ["aic","aicc","bic"]
+    @assert integrationTest ∈ ["kpss"]
+    @assert seasonalIntegrationTest ∈ ["seas","ch"]
+
+    informationCriteriaFunction = getInformationCriteriaFunction(informationCriteria)
+
+    if seasonality == 1
+        D = 0
+    end
+
+    if D < 0
+        D = selectSeasonalIntegrationOrder(deepcopy(values(y)) ,seasonality,seasonalIntegrationTest)
+    end
+
+    if d < 0 
+        d = selectIntegrationOrder(deepcopy(values(y)), maxd, D, seasonality, integrationTest)
+    end
+
+    allowMean = allowMean && (d+D <2)
+
+    # Include intial models
+    candidateModels = Vector{SARIMAModel}()
+    visitedModels = Dict{String,Dict{String,Any}}()
+
+    if seasonality == 1
+        initialNonSeasonalModels!(candidateModels, y, maxp, d, maxq, allowMean)
+    else
+        initialSeasonalModels!(candidateModels, y, maxp, d, maxq, maxP, D, maxQ, seasonality, allowMean)
+    end
+
+    # Fit models
+    bestCriteria, bestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction)
+    
+    ITERATION_LIMIT = 100
+    iterations = 1
+    while iterations <= ITERATION_LIMIT
+
+        addNonSeasonalModels!(bestModel, candidateModels, visitedModels, maxp, maxq, allowMean)
+        (seasonality > 1) && addSeasonalModels!(bestModel, candidateModels, visitedModels, maxP, maxQ, allowMean)
+        (d+D < 2) && addChangedConstantModel!(bestModel, candidateModels, visitedModels)
+
+        itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction)
+        
+        (itBestCriteria > bestCriteria) && break
+        bestCriteria = itBestCriteria
+        bestModel = itBestModel
+
+        iterations += 1
+    end
+    @info("The best model found is $(getId(bestModel)) with $(iterations) iterations")
+
+    return bestModel
+end
+
+function getInformationCriteriaFunction(informationCriteria)
+    if informationCriteria == "aic"
+        return aic
+    elseif informationCriteria == "aicc"
+        return aicc
+    elseif informationCriteria == "bic"
+        return bic
+    end
+    throw(ArgumentError("The information criteria $informationCriteria is not supported"))
+end
+
+function selectSeasonalIntegrationOrder(
+    y::Vector{Float64},
+    seasonality::Int64,
+    test::String
+)
+    if test == "seas"
+        return StateSpaceModels.seasonal_strength_test(y,seasonality)
+    elseif test == "ch"
+        return StateSpaceModels.canova_hansen_test(y,seasonality)
+    end
+
+    throw(ArgumentError("The test $test is not supported"))
+end
+
+function selectIntegrationOrder(
+    y::Vector{Float64},
+    maxd::Int64,
+    D::Int64,
+    seasonality::Int64,
+    test::String
+)
+    if test == "kpss"
+        return StateSpaceModels.repeated_kpss_test(y,maxd,D,seasonality)
+    end
+
+    throw(ArgumentError("The test $test is not supported"))
+end
+
+function initialNonSeasonalModels!(
+    models::Vector{SARIMAModel}, 
+    y::TimeArray, 
+    maxp::Int64, 
+    d::Int64, 
+    maxq::Int64, 
+    allowMean::Bool
+)
+    push!(models, SARIMA(y,0,d,0;allowMean=allowMean))
+    (maxp >= 1) && push!(models, SARIMA(y,1,d,0;allowMean=allowMean))
+    (maxq >= 1) && push!(models, SARIMA(y,0,d,1;allowMean=allowMean))
+    (maxp >= 2 && maxq >= 2) && push!(models, SARIMA(y,2,d,2;allowMean=allowMean))
+end
+
+function initialSeasonalModels!(
+    models::Vector{SARIMAModel}, 
+    y::TimeArray, 
+    maxp::Int64, 
+    d::Int64, 
+    maxq::Int64, 
+    maxP::Int64, 
+    D::Int64, 
+    maxQ::Int64, 
+    seasonality::Int64, 
+    allowMean::Bool
+)
+    push!(models, SARIMA(y,0,d,0;seasonality=seasonality,P=0,D=D,Q=0,allowMean=allowMean))
+    (maxp >= 1 && maxP >= 1) && push!(models, SARIMA(y,1,d,0;seasonality=seasonality,P=1,D=D,Q=0, allowMean=allowMean))
+    (maxq >= 1 && maxQ >= 1) && push!(models, SARIMA(y,0,d,1;seasonality=seasonality,P=0,D=D,Q=1,allowMean=allowMean))
+    (maxp >= 2 && maxq >= 2 && maxP >= 1 && maxQ >= 1) && push!(models, SARIMA(y,2,d,2;seasonality=seasonality,P=1,D=D,Q=1,allowMean=allowMean))
+end
+
+function getId(
+    model::SARIMAModel
+)
+    return "SARIMA($(model.p),$(model.d),$(model.q))($(model.P),$(model.D),$(model.Q) s=$(model.seasonality), c=$(model.allowMean))"
+end
+
+function isVisited(model::SARIMAModel, visitedModels::Dict{String,Dict{String,Any}})
+    id = getId(model)
+    return haskey(visitedModels,id)
+end
+
+function localSearch!(
+    candidateModels::Vector{SARIMAModel},
+    visitedModels::Dict{String,Dict{String,Any}},
+    informationCriteriaFunction::Function
+)   
+    localBestCriteria = Inf
+    localBestModel = nothing
+    foreach(model ->
+        if !isFitted(model) 
+            fit!(model)
+            criteria = informationCriteriaFunction(model)
+            @info("Fitted $(getId(model)) with $(criteria)")
+            visitedModels[getId(model)] = Dict(
+                "criteria" => criteria
+            )
+            if criteria < localBestCriteria
+                localBestCriteria = criteria
+                localBestModel = model
+            end
+        end
+    , candidateModels)
+    return localBestCriteria, localBestModel
+end
+
+function addNonSeasonalModels!(
+    bestModel::SARIMAModel, 
+    candidateModels::Vector{SARIMAModel},
+    visitedModels::Dict{String,Dict{String,Any}},  
+    maxp::Int64, 
+    maxq::Int64, 
+    allowMean::Bool
+)
+    for p in -1:1, q in -1:1
+        newp = bestModel.p + p
+        newq = bestModel.q + q
+        if newp < 0 || newq < 0 || newp > maxp || newq > maxq
+            continue
+        end
+
+        newModel = SARIMA(
+                    deepcopy(bestModel.y),
+                    newp,
+                    bestModel.d,
+                    newq;
+                    seasonality=bestModel.seasonality, 
+                    P=bestModel.P,
+                    D=bestModel.D,
+                    Q=bestModel.Q,
+                    allowMean=allowMean
+                )
+        if !isVisited(newModel,visitedModels)
+            push!(candidateModels, newModel)
+        end
+    end
+end
+
+function addSeasonalModels!(
+    bestModel::SARIMAModel, 
+    candidateModels::Vector{SARIMAModel},
+    visitedModels::Dict{String,Dict{String,Any}}, 
+    maxP::Int64, 
+    maxQ::Int64, 
+    allowMean::Bool
+)
+    for P in -1:1, Q in -1:1
+        newP = bestModel.P + P
+        newQ = bestModel.Q + Q
+        if newP < 0 || newQ < 0 || newP > maxP || newQ > maxQ
+            continue
+        end
+
+        newModel = SARIMA(
+                    deepcopy(bestModel.y),
+                    bestModel.p,
+                    bestModel.d,
+                    bestModel.q;
+                    seasonality=bestModel.seasonality,
+                    P=newP,
+                    D=bestModel.D,
+                    Q=newQ,
+                    allowMean=allowMean
+                )
+        if !isVisited(newModel,visitedModels)
+            push!(candidateModels, newModel)
+        end
+    end
+end
+
+function addChangedConstantModel!(
+    bestModel::SARIMAModel,
+    candidateModels::Vector{SARIMAModel},
+    visitedModels::Dict{String,Dict{String,Any}},
+)
+    newModel = SARIMA(deepcopy(bestModel.y),bestModel.p,bestModel.d,bestModel.q;seasonality=bestModel.seasonality,P=bestModel.P,D=bestModel.D,Q=bestModel.Q,allowMean=!bestModel.allowMean)
+    if !isVisited(newModel,visitedModels)
+        push!(candidateModels, newModel)
+    end
 end

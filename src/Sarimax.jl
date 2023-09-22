@@ -1,6 +1,6 @@
 module Sarimax
 
-import Base: print, copy, showerror
+import Base: print, copy, deepcopy, showerror
 
 using JuMP
 using SCIP
@@ -13,6 +13,7 @@ using OffsetArrays
 using Distributions
 using DataFrames
 using CSV
+using StateSpaceModels
 # using GLMNet
 # using Lasso
 
@@ -49,6 +50,8 @@ export loglikelihood
 export loglike
 export hasFitMethods
 export hasHyperparametersMethods
+export getHyperparametersNumber
+export auto
 export aic
 export aicc
 export bic
