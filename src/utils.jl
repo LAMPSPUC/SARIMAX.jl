@@ -20,7 +20,7 @@ julia> stationaryAirPassengers = differentiate(airPassengers, d=1, D=1, s=12)
 function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
     series = TimeArray(timestamp(series),values(series))
     if D > 0
-        @info("Seasonal difference")
+        # @info("Seasonal difference")
         diffValues = []
         originalValues = values(series)
         T = length(originalValues)
@@ -33,7 +33,7 @@ function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
         series = TimeArray(copy(timestamp(series))[(D*s)+1:end],diffValues)
     end
     # non seasonal diff y
-    @info("Non seasonal difference")
+    # @info("Non seasonal difference")
     for _ in 1:d
         diffValues = []
         originalValues = values(series)
@@ -99,7 +99,7 @@ end
     -0.5 * (T * log(2π) + T * log(σ²) + sum(ϵ.^2 ./ σ²))
 """
 function loglikelihood(model::SarimaxModel)
-    !hasFitMethods(SarimaxModel) && throw(MissingMethodImplementation("fit!"))
+    !hasFitMethods(typeof(model)) && throw(MissingMethodImplementation("fit!"))
     !isFitted(model) && throw(ModelNotFitted())
     T = length(model.ϵ)
     return -0.5 * (T * log(2π) + T * log(model.σ²) + sum(model.ϵ.^2 ./ model.σ²))
@@ -122,7 +122,7 @@ end
     f(x_i; θ) is the probability density function of the model evaluated at data point x_i with parameter θ.
 """
 function loglike(model::SarimaxModel)
-    !hasFitMethods(SarimaxModel) && throw(MissingMethodImplementation("fit!"))
+    !hasFitMethods(typeof(model)) && throw(MissingMethodImplementation("fit!"))
     !isFitted(model) && throw(ModelNotFitted())
     return sum(logpdf.(Normal(0, sqrt(model.σ²)), model.ϵ))
 end

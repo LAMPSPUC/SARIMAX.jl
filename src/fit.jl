@@ -35,20 +35,20 @@ function bic(T::Int64, K::Int64, loglikeVal::Float64)
 end
 
 function aic(model::SarimaxModel)
-    !hasHyperparametersMethods(SarimaxModel) && throw(MissingMethodImplementation("getHyperparametersNumber"))
+    !hasHyperparametersMethods(typeof(model)) && throw(MissingMethodImplementation("getHyperparametersNumber"))
     K = getHyperparametersNumber(model)
     return aic(K, loglike(model))
 end
 
 function aicc(model::SarimaxModel)
-    !hasHyperparametersMethods(SarimaxModel) && throw(MissingMethodImplementation("getHyperparametersNumber"))
+    !hasHyperparametersMethods(typeof(model)) && throw(MissingMethodImplementation("getHyperparametersNumber"))
     K = getHyperparametersNumber(model)
     T = length(model.ϵ)
     return aicc(T, K, loglike(model))
 end
 
 function bic(model::SarimaxModel)
-    !hasHyperparametersMethods(SarimaxModel) && throw(MissingMethodImplementation("getHyperparametersNumber"))
+    !hasHyperparametersMethods(typeof(model)) && throw(MissingMethodImplementation("getHyperparametersNumber"))
     K = getHyperparametersNumber(model)
     T = length(model.ϵ)
     return bic(T, K, loglike(model))
