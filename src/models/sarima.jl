@@ -172,10 +172,10 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         set_silent(mod)
     end
     
-    @variable(mod,ϕ[1:model.p])
-    @variable(mod,θ[1:model.q])
-    @variable(mod,Φ[1:model.P])
-    @variable(mod,Θ[1:model.Q])
+    @variable(mod,-1 <= ϕ[1:model.p] <= 1)
+    @variable(mod,-1 <= θ[1:model.q] <= 1)
+    @variable(mod,-1 <= Φ[1:model.P] <= 1)
+    @variable(mod,-1 <= Θ[1:model.Q] <= 1)
     @variable(mod,ϵ[1:T])
     @variable(mod,c)
     (model.allowMean) || @constraint(mod,0 <= c <= 0.0) 
