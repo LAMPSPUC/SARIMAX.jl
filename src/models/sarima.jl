@@ -138,11 +138,13 @@ end
         model::SARIMAModel;
         silent::Bool=true,
         optimizer::DataType=Ipopt.Optimizer,
-        normalize::Bool=false
+        objectiveFunction::String="mse"
     )
 
 Estimate the Sarima model parameters via non linear least squares. The resulting optimal
-parameters as well as the resisuals and the model σ² are stored within the model. 
+parameters as well as the resisuals and the model σ² are stored within the model.
+The default objective function used to estimate the parameters is the mean squared error (MSE)
+but it can be changed to the maximum likelihood (ML) by setting the `objectiveFunction` parameter to "ml". 
 
 # Example
 ```jldoctest
@@ -153,17 +155,13 @@ julia> model = SARIMA(airPassengers,0,1,1;seasonality=12,P=0,D=1,Q=1)
 julia> fit!(model)
 ```
 """
-function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, normalize::Bool=false)
+function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, objectiveFunction::String="mse")
     isFitted(model) && @info("The model has already been fitted. Overwriting the previous results")
+    @assert objectiveFunction ∈ ["mse","ml"] "The objective function $objectiveFunction is not supported. Please use 'mse' or 'ml'"
+    
     diffY = differentiate(model.y,model.d,model.D, model.seasonality)
 
     T = length(diffY)
-
-    # Normalizing arrays 
-    if normalize
-        @info("Normalizing time series")
-        diffY = (diffY .- mean(values(diffY)))./std(values(diffY)) 
-    end
 
     yValues = values(diffY)
 
@@ -191,10 +189,22 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     for i in 1:model.Q 
         set_start_value(mod[:Θ][i], 0.0) 
     end
-
-    @objective(mod, Min, mean(ϵ.^2))# + 0.1*(sum(θ.^2)+sum(Θ.^2)))
+    
     lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
     fix.(ϵ[1:lb-1],0.0)
+
+    if objectiveFunction == "mse"
+        @objective(mod, Min, mean(ϵ.^2))# + 0.1*(sum(θ.^2)+sum(Θ.^2)))
+    elseif objectiveFunction == "ml"
+        # llk(ϵ,μ,σ) = logpdf(Normal(μ,abs(σ)),ϵ)
+        # register(mod, :llk, 3, llk, autodiff=true)
+        # @NLobjective( mod, Max, sum(llk(ϵ[t],μ,σ) for t=lb:T))
+        @variable(mod, μ, start = 0.0)
+        @variable(mod, σ >= 0.0, start = 1.0)
+        @constraint(mod,0 <= μ <= 0.0) 
+        @NLobjective( mod, Max,((T-lb)/2) * log(1 / (2*π*σ*σ)) - sum((ϵ[t] - μ)^2 for t in lb:T) / (2*σ*σ))
+    end
+
     if model.seasonality > 1
         @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q) + sum(Φ[k]*yValues[t - (model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q))
     else
@@ -242,7 +252,11 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         end
         fitInSample = TimeArray(timestamp(fitInSample), fittedValues)
     end
+
     residualsVariance = var(value.(ϵ)[lb:end])
+    if objectiveFunction == "ml"
+        residualsVariance = value(σ)^2
+    end
     fillFitValues!(model,value(c),value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
 end
 
@@ -396,10 +410,11 @@ end
         maxP::Int64 = 2,
         maxD::Int64 = 1,
         maxQ::Int64 = 2,
-        informationCriteria::String = "aic",
+        informationCriteria::String = "aicc",
         allowMean::Bool = true,
         integrationTest::String = "kpss",
         seasonalIntegrationTest::String = "seas",
+        objectiveFunction::String = "mse"
     )
 
 Automatically fits the best [`SARIMA`](@ref) model according to the best information criteria 
@@ -426,9 +441,10 @@ function auto(
     allowMean::Bool = true,
     integrationTest::String = "kpss",
     seasonalIntegrationTest::String = "seas",
+    objectiveFunction::String = "mse"
 )
-    @assert seasonality >= 1
-    @assert d >= -1
+    @assert seasonality >= 1 "seasonality must be greater than 1. Use 1 for non seasonal models"
+    @assert d >= -1 
     @assert d <= maxd
     @assert D >= -1
     @assert D <= maxD
@@ -441,6 +457,7 @@ function auto(
     @assert informationCriteria ∈ ["aic","aicc","bic"]
     @assert integrationTest ∈ ["kpss"]
     @assert seasonalIntegrationTest ∈ ["seas","ch"]
+    @assert objectiveFunction ∈ ["mse","ml"] 
 
     informationCriteriaFunction = getInformationCriteriaFunction(informationCriteria)
 
@@ -479,7 +496,7 @@ function auto(
         (seasonality > 1) && addSeasonalModels!(bestModel, candidateModels, visitedModels, maxP, maxQ, allowMean)
         (d+D < 2) && addChangedConstantModel!(bestModel, candidateModels, visitedModels)
 
-        itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction)
+        itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction)
         
         (itBestCriteria > bestCriteria) && break
         bestCriteria = itBestCriteria
@@ -577,13 +594,14 @@ end
 function localSearch!(
     candidateModels::Vector{SARIMAModel},
     visitedModels::Dict{String,Dict{String,Any}},
-    informationCriteriaFunction::Function
+    informationCriteriaFunction::Function,
+    objectiveFunction::String = "mse"
 )   
     localBestCriteria = Inf
     localBestModel = nothing
     foreach(model ->
         if !isFitted(model) 
-            fit!(model)
+            fit!(model;objectiveFunction=objectiveFunction)
             criteria = informationCriteriaFunction(model)
             @info("Fitted $(getId(model)) with $(criteria)")
             visitedModels[getId(model)] = Dict(
