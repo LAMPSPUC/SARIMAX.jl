@@ -8,6 +8,7 @@ mutable struct SARIMAModel <: SarimaxModel
     D::Int64
     Q::Int64
     c::Union{Float64,Nothing}
+    trend::Union{Float64,Nothing}
     ϕ::Union{Vector{Float64},Nothing}
     θ::Union{Vector{Float64},Nothing}
     Φ::Union{Vector{Float64},Nothing}
@@ -18,6 +19,7 @@ mutable struct SARIMAModel <: SarimaxModel
     forecast::Union{Array{Float64},Nothing}
     silent::Bool
     allowMean::Bool
+    allowDrift::Bool
     function SARIMAModel(y::TimeArray,
                         p::Int64,
                         d::Int64,
@@ -27,6 +29,7 @@ mutable struct SARIMAModel <: SarimaxModel
                         D::Int64 = 0,
                         Q::Int64 = 0,
                         c::Union{Float64,Nothing}=nothing,
+                        trend::Union{Float64,Nothing}=nothing,
                         ϕ::Union{Vector{Float64},Nothing}=nothing,
                         θ::Union{Vector{Float64},Nothing}=nothing,
                         Φ::Union{Vector{Float64},Nothing}=nothing,
@@ -36,7 +39,8 @@ mutable struct SARIMAModel <: SarimaxModel
                         fitInSample::Union{TimeArray,Nothing}=nothing,
                         forecast::Union{TimeArray,Nothing}=nothing,
                         silent::Bool=true,
-                        allowMean::Bool=true)
+                        allowMean::Bool=true,
+                        allowDrift::Bool=false)
         @assert p >= 0
         @assert d >= 0
         @assert q >= 0
@@ -44,18 +48,19 @@ mutable struct SARIMAModel <: SarimaxModel
         @assert D >= 0
         @assert Q >= 0
         @assert seasonality >= 1
-        return new(y,p,d,q,seasonality,P,D,Q,c,ϕ,θ,Φ,Θ,ϵ,σ²,fitInSample,forecast,silent,allowMean)
+        return new(y,p,d,q,seasonality,P,D,Q,c,trend,ϕ,θ,Φ,Θ,ϵ,σ²,fitInSample,forecast,silent,allowMean,allowDrift)
     end
 end
 
 function print(model::SARIMAModel)
     println("=================MODEL===============")
     println("SARIMA ($(model.p), $(model.d) ,$(model.q))($(model.P), $(model.D) ,$(model.Q) s=$(model.seasonality))")
-    model.allowMean && println("Estimated c       : ",model.c)
-    model.p != 0    && println("Estimated ϕ       : ", model.ϕ)
-    model.q != 0    && println("Estimated θ       : ",model.θ)
-    model.P != 0    && println("Estimated Φ       : ", model.Φ)
-    model.Q != 0    && println("Estimated θ       : ",model.Θ)
+    model.allowMean  && println("Estimated c       : ",model.c)
+    model.allowDrift && println("Estimated trend   : ",model.trend)
+    model.p != 0     && println("Estimated ϕ       : ", model.ϕ)
+    model.q != 0     && println("Estimated θ       : ",model.θ)
+    model.P != 0     && println("Estimated Φ       : ", model.Φ)
+    model.Q != 0     && println("Estimated θ       : ",model.Θ)
     println("Residuals σ²      : ",model.σ²)
 end
 
@@ -68,12 +73,14 @@ function SARIMA(y::TimeArray,
                 D::Int64 = 0,
                 Q::Int64 = 0,
                 silent::Bool=true,
-                allowMean::Bool=true)
-    return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,silent=silent,allowMean=allowMean)
+                allowMean::Bool=true,
+                allowDrift::Bool=false)
+    return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,silent=silent,allowMean=allowMean,allowDrift=allowDrift)
 end
 
 function fillFitValues!(model::SARIMAModel,
                         c::Float64,
+                        trend::Float64,
                         ϕ::Vector{Float64},
                         θ::Vector{Float64},
                         ϵ::Vector{Float64},
@@ -82,6 +89,7 @@ function fillFitValues!(model::SARIMAModel,
                         Φ::Union{Vector{Float64},Nothing}=nothing,
                         Θ::Union{Vector{Float64},Nothing}=nothing)
     model.c = c
+    model.trend = trend
     model.ϕ = ϕ
     model.θ = θ
     model.ϵ = ϵ
@@ -130,6 +138,7 @@ end
 """
 function getHyperparametersNumber(model::SARIMAModel)
     k = (model.allowMean) ? 1 : 0
+    k = (model.allowDrift) ? k + 1 : k
     return model.p + model.q + model.P + model.Q + k
 end
 
@@ -178,36 +187,35 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         @variable(mod,θ[i=1:model.q] in Parameter(i))
         @variable(mod,Θ[i=1:model.Q] in Parameter(i))
     else
-    @variable(mod,-1 <= θ[1:model.q] <= 1)
-    @variable(mod,-1 <= θ[1:model.q] <= 1)
-    @variable(mod,-1 <= Φ[1:model.P] <= 1)
         @variable(mod,-1 <= θ[1:model.q] <= 1)
-    @variable(mod,-1 <= Φ[1:model.P] <= 1)
         @variable(mod,-1 <= Θ[1:model.Q] <= 1)
+        for i in 1:model.q 
+            set_start_value(mod[:θ][i], 0.0) 
+        end
+        
+        for i in 1:model.Q 
+            set_start_value(mod[:Θ][i], 0.0) 
+        end
     end
     @variable(mod,ϵ[1:T])
     @variable(mod,c)
-    (model.allowMean) || @constraint(mod,0 <= c <= 0.0) 
+    @variable(mod,trend)
+
+    (model.allowMean) || @constraint(mod,0.0 <= c <= 0.0) 
+    (model.allowDrift) || @constraint(mod,0.0 <= trend <= 0.0)
 
     if solver_name(mod) == "Gurobi"
         set_optimizer_attribute(mod, "NonConvex", 2)
-    end
-    
-    for i in 1:model.q 
-        set_start_value(mod[:θ][i], 0.0) 
-    end
-    
-    for i in 1:model.Q 
-        set_start_value(mod[:Θ][i], 0.0) 
     end
     
     lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
     fix.(ϵ[1:lb-1],0.0)
 
     if objectiveFunction == "mse"
-        @objective(mod, Min, mean(ϵ.^2))# + 0.1*(sum(θ.^2)+sum(Θ.^2)))
+        @objective(mod, Min, mean(ϵ.^2))
     elseif objectiveFunction == "bilevel"
         @objective(mod, Min, mean(ϵ.^2))
+        set_time_limit_sec(mod, 1.0)
     elseif objectiveFunction == "ml"
         # llk(ϵ,μ,σ) = logpdf(Normal(μ,abs(σ)),ϵ)
         # register(mod, :llk, 3, llk, autodiff=true)
@@ -219,9 +227,9 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     end
 
     if model.seasonality > 1
-        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q) + sum(Φ[k]*yValues[t - (model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q))
+        @expression(mod, ŷ[t=lb:T], c + trend*t + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q) + sum(Φ[k]*yValues[t - (model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q))
     else
-        @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q))
+        @expression(mod, ŷ[t=lb:T], c + trend*t +sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q))
     end
     @constraint(mod, [t=lb:T], yValues[t] == ŷ[t] + ϵ[t])
     
@@ -241,12 +249,13 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         if model.q + model.Q > 0
             ma_lower_bound = -1 .* ones(model.q+model.Q)
             ma_upper_bound = ones(model.q+model.Q)
-            intialCoefficients = zeros(model.q+model.Q) #vcat(parameter_value.(θ),parameter_value.(Θ))# 
-            results = Optim.optimize(optimizeMA, ma_lower_bound, ma_upper_bound, intialCoefficients)#, Optim.LBFGS())
+            initialCoefficients = zeros(model.q+model.Q)# vcat(parameter_value.(θ),parameter_value.(Θ))# 
+            results = Optim.optimize(optimizeMA, ma_lower_bound, ma_upper_bound, initialCoefficients)
+            #results = Optim.optimize(optimizeMA,initialCoefficients,LBFGS(),Optim.Options(time_limit=60))
             if !Optim.converged(results)
                 @warn("The optimization did not converge")
                 @warn("Trying another method")
-                results = Optim.optimize(optimizeMA, intialCoefficients, Optim.NelderMead())
+                results = Optim.optimize(optimizeMA, initialCoefficients, Optim.NelderMead())
                 println(Optim.converged(results))
                 Optim.converged(results) || @warn("The optimization did not converge")
             end
@@ -296,7 +305,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     if objectiveFunction == "ml"
         residualsVariance = value(σ)^2
     end
-    fillFitValues!(model,value(c),value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
+    fillFitValues!(model,value(c),value(trend),value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
 end
 
 """
@@ -325,8 +334,9 @@ function predict!(model::SARIMAModel, stepsAhead::Int64=1)
     diffY = differentiate(model.y,model.d,model.D,model.seasonality)
     yValues::Vector{Float64} = deepcopy(values(diffY))
     errors = deepcopy(model.ϵ)
+    t = length(yValues)
     for _= 1:stepsAhead
-        forecastedValue = model.c
+        forecastedValue = model.c + model.trend*(t+stepsAhead)
         if model.p > 0
             # ∑ϕᵢyₜ -i
             forecastedValue += sum(model.ϕ[i]*yValues[end-i+1] for i=1:model.p)
@@ -377,8 +387,9 @@ function predict(model::SARIMAModel, stepsAhead::Int64=1)
     diffY = differentiate(model.y,model.d,model.D,model.seasonality)
     yValues::Vector{Float64} = deepcopy(values(diffY))
     errors = deepcopy(model.ϵ)
+    t = length(yValues)
     for _= 1:stepsAhead
-        forecastedValue = model.c
+        forecastedValue = model.c + model.trend*(t+stepsAhead)
         if model.p > 0
             # ∑ϕᵢyₜ -i
             forecastedValue += sum(model.ϕ[i]*yValues[end-i+1] for i=1:model.p)
@@ -478,6 +489,7 @@ function auto(
     maxQ::Int64 = 2,
     informationCriteria::String = "aicc",
     allowMean::Bool = true,
+    allowDrift::Bool = true,
     integrationTest::String = "kpss",
     seasonalIntegrationTest::String = "seas",
     objectiveFunction::String = "mse"
@@ -512,28 +524,30 @@ function auto(
         d = selectIntegrationOrder(deepcopy(values(y)), maxd, D, seasonality, integrationTest)
     end
 
-    allowMean = allowMean && (d+D <2)
+    allowMean = allowMean && (d+D == 0)
+    allowDrift = allowDrift && (d+D == 1)
 
     # Include intial models
     candidateModels = Vector{SARIMAModel}()
     visitedModels = Dict{String,Dict{String,Any}}()
 
     if seasonality == 1
-        initialNonSeasonalModels!(candidateModels, y, maxp, d, maxq, allowMean)
+        initialNonSeasonalModels!(candidateModels, y, maxp, d, maxq, allowMean, allowDrift)
     else
-        initialSeasonalModels!(candidateModels, y, maxp, d, maxq, maxP, D, maxQ, seasonality, allowMean)
+        initialSeasonalModels!(candidateModels, y, maxp, d, maxq, maxP, D, maxQ, seasonality, allowMean, allowDrift)
     end
 
     # Fit models
-    bestCriteria, bestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction)
+    bestCriteria, bestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction)
     
     ITERATION_LIMIT = 100
     iterations = 1
     while iterations <= ITERATION_LIMIT
 
-        addNonSeasonalModels!(bestModel, candidateModels, visitedModels, maxp, maxq, allowMean)
-        (seasonality > 1) && addSeasonalModels!(bestModel, candidateModels, visitedModels, maxP, maxQ, allowMean)
-        (d+D < 2) && addChangedConstantModel!(bestModel, candidateModels, visitedModels)
+        addNonSeasonalModels!(bestModel, candidateModels, visitedModels, maxp, maxq, allowMean, allowDrift)
+        (seasonality > 1) && addSeasonalModels!(bestModel, candidateModels, visitedModels, maxP, maxQ, allowMean, allowDrift)
+        (d+D == 0) && addChangedConstantModel!(bestModel, candidateModels, visitedModels)
+        (d+D == 1) && addChangedConstantModel!(bestModel, candidateModels, visitedModels,true)
 
         itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction)
         
@@ -593,12 +607,13 @@ function initialNonSeasonalModels!(
     maxp::Int64, 
     d::Int64, 
     maxq::Int64, 
-    allowMean::Bool
+    allowMean::Bool,
+    allowDrift::Bool
 )
-    push!(models, SARIMA(y,0,d,0;allowMean=allowMean))
-    (maxp >= 1) && push!(models, SARIMA(y,1,d,0;allowMean=allowMean))
-    (maxq >= 1) && push!(models, SARIMA(y,0,d,1;allowMean=allowMean))
-    (maxp >= 2 && maxq >= 2) && push!(models, SARIMA(y,2,d,2;allowMean=allowMean))
+    push!(models, SARIMA(y,0,d,0;allowMean=allowMean,allowDrift=allowDrift))
+    (maxp >= 1) && push!(models, SARIMA(y,1,d,0;allowMean=allowMean,allowDrift=allowDrift))
+    (maxq >= 1) && push!(models, SARIMA(y,0,d,1;allowMean=allowMean,allowDrift=allowDrift))
+    (maxp >= 2 && maxq >= 2) && push!(models, SARIMA(y,2,d,2;allowMean=allowMean,allowDrift=allowDrift))
 end
 
 function initialSeasonalModels!(
@@ -611,18 +626,19 @@ function initialSeasonalModels!(
     D::Int64, 
     maxQ::Int64, 
     seasonality::Int64, 
-    allowMean::Bool
+    allowMean::Bool,
+    allowDrift::Bool
 )
-    push!(models, SARIMA(y,0,d,0;seasonality=seasonality,P=0,D=D,Q=0,allowMean=allowMean))
-    (maxp >= 1 && maxP >= 1) && push!(models, SARIMA(y,1,d,0;seasonality=seasonality,P=1,D=D,Q=0, allowMean=allowMean))
-    (maxq >= 1 && maxQ >= 1) && push!(models, SARIMA(y,0,d,1;seasonality=seasonality,P=0,D=D,Q=1,allowMean=allowMean))
-    (maxp >= 2 && maxq >= 2 && maxP >= 1 && maxQ >= 1) && push!(models, SARIMA(y,2,d,2;seasonality=seasonality,P=1,D=D,Q=1,allowMean=allowMean))
+    push!(models, SARIMA(y,0,d,0;seasonality=seasonality,P=0,D=D,Q=0,allowMean=allowMean,allowDrift=allowDrift))
+    (maxp >= 1 && maxP >= 1) && push!(models, SARIMA(y,1,d,0;seasonality=seasonality,P=1,D=D,Q=0, allowMean=allowMean,allowDrift=allowDrift))
+    (maxq >= 1 && maxQ >= 1) && push!(models, SARIMA(y,0,d,1;seasonality=seasonality,P=0,D=D,Q=1,allowMean=allowMean,allowDrift=allowDrift))
+    (maxp >= 2 && maxq >= 2 && maxP >= 1 && maxQ >= 1) && push!(models, SARIMA(y,2,d,2;seasonality=seasonality,P=1,D=D,Q=1,allowMean=allowMean,allowDrift=allowDrift))
 end
 
 function getId(
     model::SARIMAModel
 )
-    return "SARIMA($(model.p),$(model.d),$(model.q))($(model.P),$(model.D),$(model.Q) s=$(model.seasonality), c=$(model.allowMean))"
+    return "SARIMA($(model.p),$(model.d),$(model.q))($(model.P),$(model.D),$(model.Q) s=$(model.seasonality), c=$(model.allowMean), drift=$(model.allowDrift))"
 end
 
 function isVisited(model::SARIMAModel, visitedModels::Dict{String,Dict{String,Any}})
@@ -661,7 +677,8 @@ function addNonSeasonalModels!(
     visitedModels::Dict{String,Dict{String,Any}},  
     maxp::Int64, 
     maxq::Int64, 
-    allowMean::Bool
+    allowMean::Bool,
+    allowDrift::Bool
 )
     for p in -1:1, q in -1:1
         newp = bestModel.p + p
@@ -679,7 +696,8 @@ function addNonSeasonalModels!(
                     P=bestModel.P,
                     D=bestModel.D,
                     Q=bestModel.Q,
-                    allowMean=allowMean
+                    allowMean=allowMean,
+                    allowDrift=allowDrift
                 )
         if !isVisited(newModel,visitedModels)
             push!(candidateModels, newModel)
@@ -693,7 +711,8 @@ function addSeasonalModels!(
     visitedModels::Dict{String,Dict{String,Any}}, 
     maxP::Int64, 
     maxQ::Int64, 
-    allowMean::Bool
+    allowMean::Bool,
+    allowDrift::Bool
 )
     for P in -1:1, Q in -1:1
         newP = bestModel.P + P
@@ -711,7 +730,8 @@ function addSeasonalModels!(
                     P=newP,
                     D=bestModel.D,
                     Q=newQ,
-                    allowMean=allowMean
+                    allowMean=allowMean,
+                    allowDrift=allowDrift
                 )
         if !isVisited(newModel,visitedModels)
             push!(candidateModels, newModel)
@@ -723,8 +743,11 @@ function addChangedConstantModel!(
     bestModel::SARIMAModel,
     candidateModels::Vector{SARIMAModel},
     visitedModels::Dict{String,Dict{String,Any}},
-)
-    newModel = SARIMA(deepcopy(bestModel.y),bestModel.p,bestModel.d,bestModel.q;seasonality=bestModel.seasonality,P=bestModel.P,D=bestModel.D,Q=bestModel.Q,allowMean=!bestModel.allowMean)
+    drift::Bool = false
+)   
+    allowDrift = drift && !bestModel.allowDrift
+    allowMean = !drift && !bestModel.allowMean
+    newModel = SARIMA(deepcopy(bestModel.y),bestModel.p,bestModel.d,bestModel.q;seasonality=bestModel.seasonality,P=bestModel.P,D=bestModel.D,Q=bestModel.Q,allowMean=allowMean,allowDrift=allowDrift)
     if !isVisited(newModel,visitedModels)
         push!(candidateModels, newModel)
     end
