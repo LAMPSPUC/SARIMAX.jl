@@ -157,7 +157,7 @@ julia> fit!(model)
 """
 function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, objectiveFunction::String="mse")
     isFitted(model) && @info("The model has already been fitted. Overwriting the previous results")
-    @assert objectiveFunction ∈ ["mse","ml"] "The objective function $objectiveFunction is not supported. Please use 'mse' or 'ml'"
+    @assert objectiveFunction ∈ ["mse","ml","bilevel"] "The objective function $objectiveFunction is not supported. Please use 'mse', 'ml' or 'bilevel'"
     @assert model.d <= 1 "The estimation only works with d <= 1. Soon this will be fixed"
     @assert model.D <= 1 "The estimation only works with D <= 1. Soon this will be fixed"
     
@@ -173,9 +173,18 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     end
     
     @variable(mod,-1 <= ϕ[1:model.p] <= 1)
+    @variable(mod,-1 <= Φ[1:model.P] <= 1)
+    if objectiveFunction == "bilevel"
+        @variable(mod,θ[i=1:model.q] in Parameter(i))
+        @variable(mod,Θ[i=1:model.Q] in Parameter(i))
+    else
+    @variable(mod,-1 <= θ[1:model.q] <= 1)
     @variable(mod,-1 <= θ[1:model.q] <= 1)
     @variable(mod,-1 <= Φ[1:model.P] <= 1)
-    @variable(mod,-1 <= Θ[1:model.Q] <= 1)
+        @variable(mod,-1 <= θ[1:model.q] <= 1)
+    @variable(mod,-1 <= Φ[1:model.P] <= 1)
+        @variable(mod,-1 <= Θ[1:model.Q] <= 1)
+    end
     @variable(mod,ϵ[1:T])
     @variable(mod,c)
     (model.allowMean) || @constraint(mod,0 <= c <= 0.0) 
@@ -197,6 +206,8 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
 
     if objectiveFunction == "mse"
         @objective(mod, Min, mean(ϵ.^2))# + 0.1*(sum(θ.^2)+sum(Θ.^2)))
+    elseif objectiveFunction == "bilevel"
+        @objective(mod, Min, mean(ϵ.^2))
     elseif objectiveFunction == "ml"
         # llk(ϵ,μ,σ) = logpdf(Normal(μ,abs(σ)),ϵ)
         # register(mod, :llk, 3, llk, autodiff=true)
@@ -213,8 +224,34 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         @expression(mod, ŷ[t=lb:T], c + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q))
     end
     @constraint(mod, [t=lb:T], yValues[t] == ŷ[t] + ϵ[t])
-    optimize!(mod)
+    
+    JuMP.optimize!(mod)
     # @info(termination_status(mod))
+
+    if objectiveFunction == "bilevel"
+        function optimizeMA(coefficients)
+            maCoefficients = coefficients[1:model.q]
+            smaCoefficients = coefficients[model.q+1:end]
+            set_parameter_value.(θ,maCoefficients)
+            set_parameter_value.(Θ,smaCoefficients)
+            JuMP.optimize!(mod)
+            return objective_value(mod)
+        end
+    
+        if model.q + model.Q > 0
+            ma_lower_bound = -1 .* ones(model.q+model.Q)
+            ma_upper_bound = ones(model.q+model.Q)
+            intialCoefficients = zeros(model.q+model.Q) #vcat(parameter_value.(θ),parameter_value.(Θ))# 
+            results = Optim.optimize(optimizeMA, ma_lower_bound, ma_upper_bound, intialCoefficients)#, Optim.LBFGS())
+            if !Optim.converged(results)
+                @warn("The optimization did not converge")
+                @warn("Trying another method")
+                results = Optim.optimize(optimizeMA, intialCoefficients, Optim.NelderMead())
+                println(Optim.converged(results))
+                Optim.converged(results) || @warn("The optimization did not converge")
+            end
+        end
+    end
     
     # TODO: - The reconciliation works for just d,D <= 1
     fitInSample::TimeArray = TimeArray(timestamp(diffY)[lb:end], OffsetArrays.no_offset_view(value.(ŷ)))
@@ -459,7 +496,7 @@ function auto(
     @assert informationCriteria ∈ ["aic","aicc","bic"]
     @assert integrationTest ∈ ["kpss"]
     @assert seasonalIntegrationTest ∈ ["seas","ch"]
-    @assert objectiveFunction ∈ ["mse","ml"] 
+    @assert objectiveFunction ∈ ["mse","ml","bilevel"] 
 
     informationCriteriaFunction = getInformationCriteriaFunction(informationCriteria)
 

@@ -14,6 +14,7 @@ using Distributions
 using DataFrames
 using CSV
 using StateSpaceModels
+using Optim
 # using GLMNet
 # using Lasso
 
