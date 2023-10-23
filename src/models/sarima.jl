@@ -198,11 +198,20 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         end
     end
     @variable(mod,ϵ[1:T])
-    @variable(mod,c)
-    @variable(mod,trend)
 
-    (model.allowMean) || @constraint(mod,0.0 <= c <= 0.0) 
-    (model.allowDrift) || @constraint(mod,0.0 <= trend <= 0.0)
+    if (model.allowMean)
+        @variable(mod,c)
+    else
+        @variable(mod,c in Parameter(1.0))
+        set_parameter_value(mod[:c], 0.0)
+    end
+
+    if (model.allowDrift)
+        @variable(mod,trend)
+    else
+        @variable(mod,trend in Parameter(1.0))
+        set_parameter_value(mod[:trend], 0.0)
+    end
 
     if solver_name(mod) == "Gurobi"
         set_optimizer_attribute(mod, "NonConvex", 2)
@@ -237,6 +246,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     # @info(termination_status(mod))
 
     if objectiveFunction == "bilevel"
+        
         function optimizeMA(coefficients)
             maCoefficients = coefficients[1:model.q]
             smaCoefficients = coefficients[model.q+1:end]
@@ -305,7 +315,9 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     if objectiveFunction == "ml"
         residualsVariance = value(σ)^2
     end
-    fillFitValues!(model,value(c),value(trend),value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
+    c = is_valid(mod, c) ? value(c) : 0.0
+    trend = is_valid(mod, trend) ? value(trend) : 0.0
+    fillFitValues!(model,c,trend,value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
 end
 
 """
