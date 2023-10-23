@@ -504,7 +504,9 @@ function auto(
     allowDrift::Bool = true,
     integrationTest::String = "kpss",
     seasonalIntegrationTest::String = "seas",
-    objectiveFunction::String = "mse"
+    objectiveFunction::String = "mse",
+    assertStationarity::Bool = false,
+    assertInvertibility::Bool = false
 )
     @assert seasonality >= 1 "seasonality must be greater than 1. Use 1 for non seasonal models"
     @assert d >= -1 
@@ -550,7 +552,7 @@ function auto(
     end
 
     # Fit models
-    bestCriteria, bestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction)
+    bestCriteria, bestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility)
     
     ITERATION_LIMIT = 100
     iterations = 1
@@ -561,7 +563,7 @@ function auto(
         (d+D == 0) && addChangedConstantModel!(bestModel, candidateModels, visitedModels)
         (d+D == 1) && addChangedConstantModel!(bestModel, candidateModels, visitedModels,true)
 
-        itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction)
+        itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility)
         
         (itBestCriteria > bestCriteria) && break
         bestCriteria = itBestCriteria
@@ -662,7 +664,9 @@ function localSearch!(
     candidateModels::Vector{SARIMAModel},
     visitedModels::Dict{String,Dict{String,Any}},
     informationCriteriaFunction::Function,
-    objectiveFunction::String = "mse"
+    objectiveFunction::String = "mse",
+    assertStationarity::Bool = false,
+    assertInvertibility::Bool = false
 )   
     localBestCriteria = Inf
     localBestModel = nothing
@@ -674,9 +678,17 @@ function localSearch!(
             visitedModels[getId(model)] = Dict(
                 "criteria" => criteria
             )
-            if criteria < localBestCriteria
-                localBestCriteria = criteria
-                localBestModel = model
+
+            if criteria < localBestCriteria 
+                invertible = !assertInvertibility || StateSpaceModels.assert_invertibility(model.θ)
+                invertible || @info("The model $(getId(model)) is not invertible")
+                stationarity = !assertStationarity || StateSpaceModels.assert_stationarity(model.ϕ)
+                stationarity || @info("The model $(getId(model)) is not stationary")
+                (!invertible || !stationarity) && @info("The model will not be considered")
+                if invertible && stationarity
+                    localBestCriteria = criteria
+                    localBestModel = model
+                end
             end
         end
     , candidateModels)
