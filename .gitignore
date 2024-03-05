@@ -120,4 +120,14 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# R 
+*.Rhistory
+
+# Visual Studio Code
+.vscode/*
+
+/test/dissertation/
+*/test/dissertation/*
+/models/opt_sarima.jl
+
 # End of https://www.toptal.com/developers/gitignore/api/julia,macos,linux,windows,visualstudiocode
