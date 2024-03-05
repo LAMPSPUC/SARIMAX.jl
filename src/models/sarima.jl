@@ -220,20 +220,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
     fix.(ϵ[1:lb-1],0.0)
 
-    if objectiveFunction == "mse"
-        @objective(mod, Min, mean(ϵ.^2))
-    elseif objectiveFunction == "bilevel"
-        @objective(mod, Min, mean(ϵ.^2))
-        set_time_limit_sec(mod, 1.0)
-    elseif objectiveFunction == "ml"
-        # llk(ϵ,μ,σ) = logpdf(Normal(μ,abs(σ)),ϵ)
-        # register(mod, :llk, 3, llk, autodiff=true)
-        # @NLobjective( mod, Max, sum(llk(ϵ[t],μ,σ) for t=lb:T))
-        @variable(mod, μ, start = 0.0)
-        @variable(mod, σ >= 0.0, start = 1.0)
-        @constraint(mod,0 <= μ <= 0.0) 
-        @NLobjective( mod, Max,((T-lb)/2) * log(1 / (2*π*σ*σ)) - sum((ϵ[t] - μ)^2 for t in lb:T) / (2*σ*σ))
-    end
+    objectiveFunctionDefinition!(mod, objectiveFunction, T, lb)
 
     if model.seasonality > 1
         @expression(mod, ŷ[t=lb:T], c + trend*t + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q) + sum(Φ[k]*yValues[t - (model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q))
@@ -313,11 +300,36 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
 
     residualsVariance = var(value.(ϵ)[lb:end])
     if objectiveFunction == "ml"
-        residualsVariance = value(σ)^2
+        residualsVariance = value(mod[:σ])^2
     end
     c = is_valid(mod, c) ? value(c) : 0.0
     trend = is_valid(mod, trend) ? value(trend) : 0.0
     fillFitValues!(model,c,trend,value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
+end
+    
+"""
+    objectiveFunctionDefinition!(
+        model::Model,
+        objectiveFunction::String,
+        T::Int,
+        lb::Int
+    )
+"""
+function objectiveFunctionDefinition!(model::Model, objectiveFunction::String, T::Int, lb::Int)
+    if objectiveFunction == "mse"
+        @objective(model, Min, mean(model[:ϵ].^2))
+    elseif objectiveFunction == "bilevel"
+        @objective(model, Min, mean(model[:ϵ].^2))
+        set_time_limit_sec(model, 1.0)
+    elseif objectiveFunction == "ml"
+        # llk(ϵ,μ,σ) = logpdf(Normal(μ,abs(σ)),ϵ)
+        # register(model, :llk, 3, llk, autodiff=true)
+        # @NLobjective( model, Max, sum(llk(ϵ[t],μ,σ) for t=lb:T))
+        @variable(model, μ, start = 0.0)
+        @variable(model, σ >= 0.0, start = 1.0)
+        @constraint(model,0 <= μ <= 0.0) 
+        @NLobjective( model, Max,((T-lb)/2) * log(1 / (2*π*σ*σ)) - sum((model[:ϵ][t] - μ)^2 for t in lb:T) / (2*σ*σ))
+    end
 end
 
 """
