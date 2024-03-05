@@ -418,7 +418,7 @@ function predict(model::SARIMAModel, stepsAhead::Int64=1)
             # ∑Θₖϵₜ-(s*k)
             forecastedValue += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q)
         end
-        ϵₜ = rand(Normal(0,sqrt(σ²)))
+        ϵₜ = rand(Normal(0,sqrt(model.σ²)))
         forecastedValue += ϵₜ
         push!(errors, ϵₜ)
         push!(yValues, forecastedValue)
