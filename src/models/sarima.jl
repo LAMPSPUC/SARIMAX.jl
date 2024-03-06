@@ -199,7 +199,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     @variable(mod,-1 <= Φ[1:model.P] <= 1)
     @variable(mod,ϵ[1:T])
     
-    if objectiveFunction == "bilevel"
+    if MACoefficientsAreModelParameters(objectiveFunction)
         @variable(mod,θ[i=1:model.q] in Parameter(i))
         @variable(mod,Θ[i=1:model.Q] in Parameter(i))
     else
@@ -275,6 +275,10 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     trend = is_valid(mod, trend) ? value(trend) : 0.0
 
     fillFitValues!(model,c,trend,value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
+end
+
+function MACoefficientsAreModelParameters(objectiveFunction::String)
+    return objectiveFunction == "bilevel"
 end
 
 function includeSolverParameters!(model::Model)
