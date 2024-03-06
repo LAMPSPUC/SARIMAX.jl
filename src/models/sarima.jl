@@ -228,36 +228,8 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         @expression(mod, ŷ[t=lb:T], c + trend*t +sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q))
     end
     @constraint(mod, [t=lb:T], yValues[t] == ŷ[t] + ϵ[t])
-    
-    JuMP.optimize!(mod)
-    # @info(termination_status(mod))
 
-    if objectiveFunction == "bilevel"
-        
-        function optimizeMA(coefficients)
-            maCoefficients = coefficients[1:model.q]
-            smaCoefficients = coefficients[model.q+1:end]
-            set_parameter_value.(θ,maCoefficients)
-            set_parameter_value.(Θ,smaCoefficients)
-            JuMP.optimize!(mod)
-            return objective_value(mod)
-        end
-    
-        if model.q + model.Q > 0
-            ma_lower_bound = -1 .* ones(model.q+model.Q)
-            ma_upper_bound = ones(model.q+model.Q)
-            initialCoefficients = zeros(model.q+model.Q)# vcat(parameter_value.(θ),parameter_value.(Θ))# 
-            results = Optim.optimize(optimizeMA, ma_lower_bound, ma_upper_bound, initialCoefficients)
-            #results = Optim.optimize(optimizeMA,initialCoefficients,LBFGS(),Optim.Options(time_limit=60))
-            if !Optim.converged(results)
-                @warn("The optimization did not converge")
-                @warn("Trying another method")
-                results = Optim.optimize(optimizeMA, initialCoefficients, Optim.NelderMead())
-                println(Optim.converged(results))
-                Optim.converged(results) || @warn("The optimization did not converge")
-            end
-        end
-    end
+    optimizeModel!(mod, model, objectiveFunction)
     
     # TODO: - The reconciliation works for just d,D <= 1
     fitInSample::TimeArray = TimeArray(timestamp(diffY)[lb:end], OffsetArrays.no_offset_view(value.(ŷ)))
@@ -298,12 +270,11 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         fitInSample = TimeArray(timestamp(fitInSample), fittedValues)
     end
 
-    residualsVariance = var(value.(ϵ)[lb:end])
-    if objectiveFunction == "ml"
-        residualsVariance = value(mod[:σ])^2
-    end
+    residualsVariance = computeSARIMAModelVariance(model, lb, objectiveFunction)
+
     c = is_valid(mod, c) ? value(c) : 0.0
     trend = is_valid(mod, trend) ? value(trend) : 0.0
+    
     fillFitValues!(model,c,trend,value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
 end
     
@@ -330,6 +301,45 @@ function objectiveFunctionDefinition!(model::Model, objectiveFunction::String, T
         @constraint(model,0 <= μ <= 0.0) 
         @NLobjective( model, Max,((T-lb)/2) * log(1 / (2*π*σ*σ)) - sum((model[:ϵ][t] - μ)^2 for t in lb:T) / (2*σ*σ))
     end
+end
+
+function optimizeModel!(jumpModel::Model, model::SARIMAModel, objectiveFunction::String)
+    JuMP.optimize!(jumpModel)
+
+    if objectiveFunction == "bilevel"
+        
+        function optimizeMA(coefficients)
+            maCoefficients = coefficients[1:model.q]
+            smaCoefficients = coefficients[model.q+1:end]
+            set_parameter_value.(jumpModel[:θ],maCoefficients)
+            set_parameter_value.(jumpModel[:Θ],smaCoefficients)
+            JuMP.optimize!(jumpModel)
+            return objective_value(jumpModel)
+        end
+    
+        if model.q + model.Q > 0
+            ma_lower_bound = -1 .* ones(model.q+model.Q)
+            ma_upper_bound = ones(model.q+model.Q)
+            initialCoefficients = zeros(model.q+model.Q)# vcat(parameter_value.(θ),parameter_value.(Θ))# 
+            results = Optim.optimize(optimizeMA, ma_lower_bound, ma_upper_bound, initialCoefficients)
+            #results = Optim.optimize(optimizeMA,initialCoefficients,LBFGS(),Optim.Options(time_limit=60))
+            if !Optim.converged(results)
+                @warn("The optimization did not converge")
+                @warn("Trying another method")
+                results = Optim.optimize(optimizeMA, initialCoefficients, Optim.NelderMead())
+                println(Optim.converged(results))
+                Optim.converged(results) || @warn("The optimization did not converge")
+            end
+        end
+    end
+end
+
+function computeSARIMAModelVariance(model::Model, lb::Int, objectiveFunction::String)
+    if objectiveFunction == "ml"
+        return value(model[:σ])^2
+    end
+
+    return var(value.(model[:ϵ])[lb:end])
 end
 
 """
