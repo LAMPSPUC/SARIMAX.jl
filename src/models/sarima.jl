@@ -180,24 +180,6 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     if silent 
         set_silent(mod)
     end
-    
-    @variable(mod,-1 <= ϕ[1:model.p] <= 1)
-    @variable(mod,-1 <= Φ[1:model.P] <= 1)
-    if objectiveFunction == "bilevel"
-        @variable(mod,θ[i=1:model.q] in Parameter(i))
-        @variable(mod,Θ[i=1:model.Q] in Parameter(i))
-    else
-        @variable(mod,-1 <= θ[1:model.q] <= 1)
-        @variable(mod,-1 <= Θ[1:model.Q] <= 1)
-        for i in 1:model.q 
-            set_start_value(mod[:θ][i], 0.0) 
-        end
-        
-        for i in 1:model.Q 
-            set_start_value(mod[:Θ][i], 0.0) 
-        end
-    end
-    @variable(mod,ϵ[1:T])
 
     if (model.allowMean)
         @variable(mod,c)
@@ -213,9 +195,26 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         set_parameter_value(mod[:trend], 0.0)
     end
 
-    if solver_name(mod) == "Gurobi"
-        set_optimizer_attribute(mod, "NonConvex", 2)
+    @variable(mod,-1 <= ϕ[1:model.p] <= 1)
+    @variable(mod,-1 <= Φ[1:model.P] <= 1)
+    @variable(mod,ϵ[1:T])
+    
+    if objectiveFunction == "bilevel"
+        @variable(mod,θ[i=1:model.q] in Parameter(i))
+        @variable(mod,Θ[i=1:model.Q] in Parameter(i))
+    else
+        @variable(mod,-1 <= θ[1:model.q] <= 1)
+        @variable(mod,-1 <= Θ[1:model.Q] <= 1)
+        for i in 1:model.q 
+            set_start_value(mod[:θ][i], 0.0) 
+        end
+        
+        for i in 1:model.Q 
+            set_start_value(mod[:Θ][i], 0.0) 
+        end
     end
+
+    includeSolverParameters!(mod)
     
     lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
     fix.(ϵ[1:lb-1],0.0)
@@ -274,8 +273,14 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
 
     c = is_valid(mod, c) ? value(c) : 0.0
     trend = is_valid(mod, trend) ? value(trend) : 0.0
-    
+
     fillFitValues!(model,c,trend,value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
+end
+
+function includeSolverParameters!(model::Model)
+    if solver_name(model) == "Gurobi"
+        set_optimizer_attribute(mod, "NonConvex", 2)
+    end
 end
     
 """
