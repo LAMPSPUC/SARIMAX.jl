@@ -269,7 +269,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         fitInSample = TimeArray(timestamp(fitInSample), fittedValues)
     end
 
-    residualsVariance = computeSARIMAModelVariance(model, lb, objectiveFunction)
+    residualsVariance = computeSARIMAModelVariance(mod, lb, objectiveFunction)
 
     c = is_valid(mod, c) ? value(c) : 0.0
     trend = is_valid(mod, trend) ? value(trend) : 0.0
