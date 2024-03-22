@@ -2,19 +2,20 @@ module Sarimax
 
 import Base: show, print, copy, deepcopy, showerror
 
-using JuMP
-using SCIP
-using Ipopt
-using TimeSeries
-using MathOptInterface
-using LinearAlgebra
-using Statistics
-using OffsetArrays
-using Distributions
-using DataFrames
 using CSV
-using StateSpaceModels
+using DataFrames
+using Distributions
+using Ipopt
+using JuMP
+using LinearAlgebra
+using MathOptInterface
+using OffsetArrays
 using Optim
+using Random
+using SCIP
+using StateSpaceModels
+using Statistics
+using TimeSeries
 # using GLMNet
 # using Lasso
 
