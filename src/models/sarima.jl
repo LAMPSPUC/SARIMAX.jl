@@ -618,34 +618,6 @@ function getInformationCriteriaFunction(informationCriteria)
     throw(ArgumentError("The information criteria $informationCriteria is not supported"))
 end
 
-function selectSeasonalIntegrationOrder(
-    y::Vector{Float64},
-    seasonality::Int64,
-    test::String
-)
-    if test == "seas"
-        return StateSpaceModels.seasonal_strength_test(y,seasonality)
-    elseif test == "ch"
-        return StateSpaceModels.canova_hansen_test(y,seasonality)
-    end
-
-    throw(ArgumentError("The test $test is not supported"))
-end
-
-function selectIntegrationOrder(
-    y::Vector{Float64},
-    maxd::Int64,
-    D::Int64,
-    seasonality::Int64,
-    test::String
-)
-    if test == "kpss"
-        return StateSpaceModels.repeated_kpss_test(y,maxd,D,seasonality)
-    end
-
-    throw(ArgumentError("The test $test is not supported"))
-end
-
 function initialNonSeasonalModels!(
     models::Vector{SARIMAModel}, 
     y::TimeArray, 

@@ -90,6 +90,65 @@ function integrate(series::TimeArray, diffSeries::Vector{Fl}, d::Int=0, D::Int=0
     return y[T+1:end]
 end
 
+function selectSeasonalIntegrationOrder(
+    y::Vector{Float64},
+    seasonality::Int64,
+    test::String
+)
+    if test == "seas"
+        return StateSpaceModels.seasonal_strength_test(y,seasonality)
+    elseif test == "ch"
+        return StateSpaceModels.canova_hansen_test(y,seasonality)
+    end
+
+    throw(ArgumentError("The test $test is not supported"))
+end
+
+function selectIntegrationOrder(
+    y::Vector{Float64},
+    maxd::Int64,
+    D::Int64,
+    seasonality::Int64,
+    test::String
+)
+    if test == "kpss"
+        return StateSpaceModels.repeated_kpss_test(y,maxd,D,seasonality)
+    end
+
+    throw(ArgumentError("The test $test is not supported"))
+end
+
+"""
+
+"""
+function automaticDifferentiation(
+    series::TimeArray;
+    seasonalPeriod::Int=1,
+    seasonalIntegrationTest::String="seas",
+    integrationTest::String="kpss",
+    maxd::Int=2
+)
+    @assert integrationTest ∈ ["kpss"]
+    @assert seasonalIntegrationTest ∈ ["seas","ch"]
+    @assert seasonalPeriod >= 1 
+
+    # Indentify seasonal integration order
+    seasonalIntegrationOrder = 0
+    if seasonalPeriod != 1
+        seasonalIntegrationOrder = selectSeasonalIntegrationOrder(values(series),s,"seas")
+    end
+
+    # Indentify integration order
+    integrationOrder = selectIntegrationOrder(values(series),maxd,seasonalIntegrationOrder,seasonalPeriod,integrationTest)
+    
+    # Apply the integration orders to differentiate the time series
+    diffSeries = differentiate(series,integrationOrder,seasonalIntegrationOrder,seasonalPeriod)
+    
+    automaticDifferentiationResult::NamedTuple = (diffSeries=diffSeries, d=integrationOrder, D=seasonalIntegrationOrder, s=seasonalPeriod)
+
+    return automaticDifferentiationResult
+end
+
 """
     loglikelihood(
         model::SARIMAModel
