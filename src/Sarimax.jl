@@ -1,6 +1,6 @@
 module Sarimax
 
-import Base: print, copy, deepcopy, showerror
+import Base: show, print, copy, deepcopy, showerror
 
 using JuMP
 using SCIP

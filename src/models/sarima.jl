@@ -64,6 +64,13 @@ function print(model::SARIMAModel)
     println("Residuals σ²      : ",model.σ²)
 end
 
+function Base.show(io::IO, model::SARIMAModel)
+    zeroMean = model.allowMean ? "non zero mean" : "zero mean"
+    zeroDrift = model.allowDrift ? "non zero drift" : "zero drift"
+    print(io, "SARIMA ($(model.p), $(model.d) ,$(model.q))($(model.P), $(model.D) ,$(model.Q) s=$(model.seasonality)) with $(zeroMean) and $(zeroDrift)")
+    return nothing
+end
+
 function SARIMA(y::TimeArray,
                 p::Int64,
                 d::Int64,
