@@ -4,7 +4,7 @@
 Builds an array of DateTime objects based on a given starting DateTime, granularity, and length.
 
 # Arguments
-- `startDatetime::DateTime`: The starting DateTime.
+- `startDatetime::DateTime`: The DateTime from which the dateTime array will be computed. It won't be included in the final array
 - `granularity::Dates.Period`: The granularity by which to increment the timestamps.
 - `weekDaysOnly::Bool`: Whether to include only weekdays (Monday to Friday) in the timestamps.
 - `datetimesLength::Int64`: The length of the array of DateTime objects to build.
