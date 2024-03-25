@@ -6,3 +6,5 @@ mutable struct MissingMethodImplementation <: Exception
 end
 Base.showerror(io::IO, e::MissingMethodImplementation) = print(io, "The model does not implement the ", e.method, " method.")
 
+mutable struct InconsistentDatePattern <: Exception end
+Base.showerror(io::IO, e::InconsistentDatePattern) = print(io, "The timestamps do not follow a consistent pattern.")

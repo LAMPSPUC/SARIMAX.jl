@@ -4,6 +4,7 @@ import Base: show, print, copy, deepcopy, showerror
 
 using CSV
 using DataFrames
+using Dates
 using Distributions
 using Ipopt
 using JuMP
@@ -22,10 +23,12 @@ using TimeSeries
 abstract type SarimaxModel end
 
 include("datasets.jl")
-include("utils.jl")
-include("models/sarima.jl")
+include("datetime_utils.jl")
 include("exceptions.jl")
 include("fit.jl")
+include("models/sarima.jl")
+include("utils.jl")
+
 
 # Export types
 export SARIMAModel
@@ -33,6 +36,7 @@ export SARIMAModel
 # Export Exceptions/Errors
 export ModelNotFitted
 export MissingMethodImplementation
+export InconsistentDatePattern
 
 # Export enums
 export Datasets
@@ -57,6 +61,8 @@ export auto
 export aic
 export aicc
 export bic
+export buildDatetimes
+export identifyGranularity
 
 
 end # module Sarimax
