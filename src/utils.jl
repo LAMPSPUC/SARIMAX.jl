@@ -18,7 +18,8 @@ julia> stationaryAirPassengers = differentiate(airPassengers, d=1, D=1, s=12)
 ```
 """
 function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
-    series = TimeArray(timestamp(series),values(series))
+    series = TimeArray(timestamp(series),values(series), colnames(series))
+    seriesName = colnames(series)[1]
     if D > 0
         # @info("Seasonal difference")
         diffValues = []
@@ -30,7 +31,7 @@ function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
                 push!(diffValues, originalValues[j] - originalValues[j-i*s])
             end
         end
-        series = TimeArray(copy(timestamp(series))[(D*s)+1:end],diffValues)
+        series = TimeArray(copy(timestamp(series))[(D*s)+1:end],diffValues,[seriesName])
     end
     # non seasonal diff y
     # @info("Non seasonal difference")
@@ -42,7 +43,7 @@ function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
         for j=2:T
             push!(diffValues,originalValues[j] - originalValues[j-1])
         end
-        series = TimeArray(copy(timestamp(series))[2:end],diffValues)
+        series = TimeArray(copy(timestamp(series))[2:end],diffValues,[seriesName])
     end
     return series
 end
@@ -90,20 +91,56 @@ function integrate(series::TimeArray, diffSeries::Vector{Fl}, d::Int=0, D::Int=0
     return y[T+1:end]
 end
 
+"""
+    selectSeasonalIntegrationOrder(y, seasonality, test)
+
+Selects the seasonal integration order for a time series based on the specified test.
+
+# Arguments
+- `y::Vector{Float64}`: The time series data.
+- `seasonality::Int64`: The seasonal period of the time series.
+- `test::String`: The name of the test to use for selecting the seasonal integration order.
+
+# Returns
+The selected seasonal integration order.
+
+# Errors
+Throws an ArgumentError if the specified test is not supported.
+
+"""
 function selectSeasonalIntegrationOrder(
     y::Vector{Float64},
     seasonality::Int64,
     test::String
 )
     if test == "seas"
-        return StateSpaceModels.seasonal_strength_test(y,seasonality)
+        return StateSpaceModels.seasonal_strength_test(y, seasonality)
     elseif test == "ch"
-        return StateSpaceModels.canova_hansen_test(y,seasonality)
+        return StateSpaceModels.canova_hansen_test(y, seasonality)
     end
 
     throw(ArgumentError("The test $test is not supported"))
 end
 
+"""
+    selectIntegrationOrder(y, maxd, D, seasonality, test)
+
+Selects the integration order for a time series based on the specified test.
+
+# Arguments
+- `y::Vector{Float64}`: The time series data.
+- `maxd::Int64`: The maximum order of differencing to consider.
+- `D::Int64`: The maximum seasonal order of differencing to consider.
+- `seasonality::Int64`: The seasonal period of the time series.
+- `test::String`: The name of the test to use for selecting the integration order.
+
+# Returns
+The selected integration order.
+
+# Errors
+Throws an ArgumentError if the specified test is not supported.
+
+"""
 function selectIntegrationOrder(
     y::Vector{Float64},
     maxd::Int64,
@@ -112,13 +149,31 @@ function selectIntegrationOrder(
     test::String
 )
     if test == "kpss"
-        return StateSpaceModels.repeated_kpss_test(y,maxd,D,seasonality)
+        return StateSpaceModels.repeated_kpss_test(y, maxd, D, seasonality)
     end
 
     throw(ArgumentError("The test $test is not supported"))
 end
 
 """
+    automaticDifferentiation(series; seasonalPeriod=1, seasonalIntegrationTest="seas", integrationTest="kpss", maxd=2)
+
+Automatically applies differentiation to each series in a TimeArray.
+
+# Arguments
+- `series::TimeArray`: The input TimeArray containing the time series data.
+- `seasonalPeriod::Int=1`: The seasonal period of the time series.
+- `seasonalIntegrationTest::String="seas"`: The test used to select the seasonal integration order.
+- `integrationTest::String="kpss"`: The test used to select the integration order.
+- `maxd::Int=2`: The maximum order of differencing to consider.
+
+# Returns
+A tuple `(diffSeries, diffSeriesMetadata)` containing:
+- `diffSeries::Vector{TimeArray}`: The differentiated time series.
+- `diffSeriesMetadata::Vector{Dict{Symbol, Any}}`: Metadata containing the integration orders used for differentiation.
+
+# Errors
+Throws an AssertionError if invalid test options or seasonal period are provided.
 
 """
 function automaticDifferentiation(
@@ -129,25 +184,33 @@ function automaticDifferentiation(
     maxd::Int=2
 )
     @assert integrationTest ∈ ["kpss"]
-    @assert seasonalIntegrationTest ∈ ["seas","ch"]
-    @assert seasonalPeriod >= 1 
+    @assert seasonalIntegrationTest ∈ ["seas", "ch"]
+    @assert seasonalPeriod ≥ 1 
 
-    # Indentify seasonal integration order
-    seasonalIntegrationOrder = 0
-    if seasonalPeriod != 1
-        seasonalIntegrationOrder = selectSeasonalIntegrationOrder(values(series),s,"seas")
+    diffSeriesVector::Array{TimeArray} = []
+    diffSeriesMetadata = Dict{Symbol, Any}()
+    
+    for col in colnames(series)
+        # Identify seasonal integration order
+        y = series[col]
+        seasonalIntegrationOrder = 0
+        if seasonalPeriod ≠ 1
+            seasonalIntegrationOrder = selectSeasonalIntegrationOrder(values(y), seasonalPeriod, seasonalIntegrationTest)
+        end
+
+        # Identify integration order
+        integrationOrder = Sarimax.selectIntegrationOrder(values(y), maxd, seasonalIntegrationOrder, seasonalPeriod, integrationTest)
+        
+        # Apply the integration orders to differentiate the time series
+        diffSeriesAux = differentiate(y, integrationOrder, seasonalIntegrationOrder, seasonalPeriod)
+        push!(diffSeriesVector, diffSeriesAux)
+        diffSeriesMetadata[col] = Dict(:d => integrationOrder, :D => seasonalIntegrationOrder)
     end
 
-    # Indentify integration order
-    integrationOrder = selectIntegrationOrder(values(series),maxd,seasonalIntegrationOrder,seasonalPeriod,integrationTest)
-    
-    # Apply the integration orders to differentiate the time series
-    diffSeries = differentiate(series,integrationOrder,seasonalIntegrationOrder,seasonalPeriod)
-    
-    automaticDifferentiationResult::NamedTuple = (diffSeries=diffSeries, d=integrationOrder, D=seasonalIntegrationOrder, s=seasonalPeriod)
-
-    return automaticDifferentiationResult
+    diffSeries = merge(diffSeriesVector)
+    return diffSeries, diffSeriesMetadata
 end
+
 
 """
     loglikelihood(
