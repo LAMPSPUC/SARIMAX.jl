@@ -1,3 +1,11 @@
+function Base.copy(y::TimeArray)
+    return TimeArray(copy(timestamp(y)),copy(values(y)))
+end
+
+function Base.deepcopy(y::TimeArray)
+    return TimeArray(deepcopy(timestamp(y)),deepcopy(values(y)))
+end
+
 """
     buildDatetimes(startDatetime, granularity, weekDaysOnly, datetimesLength)
 
@@ -150,4 +158,42 @@ function identifyGranularity(datetimes::Vector{DateTime})
     return (granularity=unitPeriod, frequency=diffBetweenTimestamps, weekdays=weekDaysSeries)
 end
 
+
+function merge(timeArrayVector::Vector{TimeArray})
+    if length(timeArrayVector) == 0
+        return TimeArray(DateTime[], [])
+    end
+
+    if length(timeArrayVector) == 1
+        return timeArrayVector[1]
+    end
+
+    initialTimestamp = timestamp(timeArrayVector[1])[1]
+    finalTimestamp = timestamp(timeArrayVector[1])[end]
+
+    for ta in timeArrayVector[2:end]
+        initialTimestampAux = timestamp(ta)[1]
+        finalTimestampAux = timestamp(ta)[end]
+        initialTimestamp = max(initialTimestamp, initialTimestampAux)
+        finalTimestamp = min(finalTimestamp, finalTimestampAux)
+    end
+
+    newTimeArrayVector = []
+    for ta in timeArrayVector
+        newTimeArray = from(ta,initialTimestamp)
+        newTimeArray = to(newTimeArray,finalTimestamp)
+        push!(newTimeArrayVector,newTimeArray)
+    end
+
+    auxiliarDf = DataFrame((:timestamp=>timestamp(newTimeArrayVector[1])))
+    for ta in newTimeArrayVector
+        # Add a column with ta colname and values
+        colname = colnames(ta)[1]
+        valuesTa = values(ta)
+        auxiliarDf[!,colname] = valuesTa
+    end
+
+
+    return TimeArray(auxiliarDf, timestamp=:timestamp)
+end
 
