@@ -42,6 +42,7 @@ export InconsistentDatePattern
 export Datasets
 
 # Export functions
+export automaticDifferentiation
 export splitTrainTest
 export print
 export copy
@@ -49,6 +50,7 @@ export fit!
 export predict!
 export SARIMA
 export differentiate
+export identifyGranularity
 export integrate
 export simulate
 export loadDataset
@@ -62,7 +64,6 @@ export aic
 export aicc
 export bic
 export buildDatetimes
-export identifyGranularity
 
 
 end # module Sarimax
