@@ -12,7 +12,7 @@ end
 Builds an array of DateTime objects based on a given starting DateTime, granularity, and length.
 
 # Arguments
-- `startDatetime::DateTime`: The DateTime from which the dateTime array will be computed. It won't be included in the final array
+- `startDatetime::T`: The DateTime from which the dateTime array will be computed. It won't be included in the final array
 - `granularity::Dates.Period`: The granularity by which to increment the timestamps.
 - `weekDaysOnly::Bool`: Whether to include only weekdays (Monday to Friday) in the timestamps.
 - `datetimesLength::Int64`: The length of the array of DateTime objects to build.
@@ -22,11 +22,11 @@ An array of DateTime objects.
 
 """
 function buildDatetimes(
-    startDatetime::DateTime, 
+    startDatetime::T, 
     granularity::Dates.Period,
     weekDaysOnly::Bool, 
     datetimesLength::Int64,
-)::Vector{DateTime}
+) where T
     if datetimesLength == 0
         return DateTime[]
     end
@@ -52,12 +52,12 @@ end
 
 
 """
-    identifyGranularity(datetimes::Vector{DateTime})
+    identifyGranularity(datetimes::Vector{T})
 
 Identifies the granularity of an array of timestamps.
 
 # Arguments
-- `datetimes::Vector{DateTime}`: An array of DateTime objects.
+- `datetimes::Vector{T}`: An array of TimeType objects.
 
 # Returns
 A tuple `(granularity, frequency, weekdays)` where:
@@ -69,7 +69,7 @@ A tuple `(granularity, frequency, weekdays)` where:
 Throws an error if the timestamps do not follow a consistent pattern.
 
 """
-function identifyGranularity(datetimes::Vector{DateTime})
+function identifyGranularity(datetimes::Vector{T}) where T
     # Define base units and periods
     baseUnits = [Second(1), Minute(1), Hour(1), Day(1), Week(1)]
     basePeriods = [:Second, :Minute, :Hour, :Day, :Week, :Month, :Year]
