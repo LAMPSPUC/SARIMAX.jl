@@ -8,3 +8,6 @@ Base.showerror(io::IO, e::MissingMethodImplementation) = print(io, "The model do
 
 mutable struct InconsistentDatePattern <: Exception end
 Base.showerror(io::IO, e::InconsistentDatePattern) = print(io, "The timestamps do not follow a consistent pattern.")
+
+mutable struct MissingExogenousData <: Exception end
+Base.showerror(io::IO, e::MissingExogenousData) = print(io, "There is no exogenous data to forecast the horizon requested")
