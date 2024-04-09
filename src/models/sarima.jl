@@ -7,6 +7,8 @@ mutable struct SARIMAModel <: SarimaxModel
     P::Int64
     D::Int64
     Q::Int64
+    metadata::Dict{String,Any}
+    exog::Union{TimeArray,Nothing}
     c::Union{Float64,Nothing}
     trend::Union{Float64,Nothing}
     ϕ::Union{Vector{Float64},Nothing}
@@ -14,13 +16,15 @@ mutable struct SARIMAModel <: SarimaxModel
     Φ::Union{Vector{Float64},Nothing}
     Θ::Union{Vector{Float64},Nothing}
     ϵ::Union{Vector{Float64},Nothing}
+    exog_coefficients::Union{Vector{Float64},Nothing}
     σ²::Float64
     fitInSample::Union{TimeArray,Nothing}
     forecast::Union{Array{Float64},Nothing}
     silent::Bool
     allowMean::Bool
     allowDrift::Bool
-    function SARIMAModel(y::TimeArray,
+    function SARIMAModel(
+                        y::TimeArray,
                         p::Int64,
                         d::Int64,
                         q::Int64;
@@ -28,6 +32,7 @@ mutable struct SARIMAModel <: SarimaxModel
                         P::Int64 = 0,
                         D::Int64 = 0,
                         Q::Int64 = 0,
+                        exog::Union{TimeArray,Nothing}=nothing,
                         c::Union{Float64,Nothing}=nothing,
                         trend::Union{Float64,Nothing}=nothing,
                         ϕ::Union{Vector{Float64},Nothing}=nothing,
@@ -35,6 +40,7 @@ mutable struct SARIMAModel <: SarimaxModel
                         Φ::Union{Vector{Float64},Nothing}=nothing,
                         Θ::Union{Vector{Float64},Nothing}=nothing,
                         ϵ::Union{Vector{Float64},Nothing}=nothing,
+                        exog_coefficients::Union{Vector{Float64},Nothing}=nothing,
                         σ²::Float64=0.0,
                         fitInSample::Union{TimeArray,Nothing}=nothing,
                         forecast::Union{TimeArray,Nothing}=nothing,
@@ -48,19 +54,32 @@ mutable struct SARIMAModel <: SarimaxModel
         @assert D >= 0
         @assert Q >= 0
         @assert seasonality >= 1
-        return new(y,p,d,q,seasonality,P,D,Q,c,trend,ϕ,θ,Φ,Θ,ϵ,σ²,fitInSample,forecast,silent,allowMean,allowDrift)
+        yMetadata = Dict()
+        granularityInfo = identifyGranularity(timestamp(y))
+        yMetadata["granularity"] = granularityInfo.granularity
+        yMetadata["frequency"] = granularityInfo.frequency
+        yMetadata["weekDaysOnly"] = granularityInfo.weekdays
+        yMetadata["startDatetime"] = timestamp(y)[1]
+        yMetadata["endDatetime"] = timestamp(y)[end]
+        if isnothing(exog)
+            @assert yMetadata["startDatetime"] == timestamp(exog)[1] "The endogenous and exogenous variables must start at the same timestamp"
+            @assert yMetadata["endDatetime"] <= timestamp(exog)[end] "The exogenous variables must end after the endogenous variables"
+            @assert granularityInfo == identifyGranularity(timestamps(exog)) "The endogenous and exogenous variables must have the same granularity, frequency and pattern"
+        end
+        return new(y,p,d,q,seasonality,P,D,Q,yMetadata,exog,c,trend,ϕ,θ,Φ,Θ,ϵ,exog_coefficients,σ²,fitInSample,forecast,silent,allowMean,allowDrift)
     end
 end
 
 function print(model::SARIMAModel)
     println("=================MODEL===============")
     println("SARIMA ($(model.p), $(model.d) ,$(model.q))($(model.P), $(model.D) ,$(model.Q) s=$(model.seasonality))")
-    model.allowMean  && println("Estimated c       : ",model.c)
-    model.allowDrift && println("Estimated trend   : ",model.trend)
-    model.p != 0     && println("Estimated ϕ       : ", model.ϕ)
-    model.q != 0     && println("Estimated θ       : ",model.θ)
-    model.P != 0     && println("Estimated Φ       : ", model.Φ)
-    model.Q != 0     && println("Estimated θ       : ",model.Θ)
+    model.allowMean       && println("Estimated c       : ",model.c)
+    model.allowDrift      && println("Estimated trend   : ",model.trend)
+    model.p != 0          && println("Estimated ϕ       : ", model.ϕ)
+    model.q != 0          && println("Estimated θ       : ",model.θ)
+    model.P != 0          && println("Estimated Φ       : ", model.Φ)
+    model.Q != 0          && println("Estimated θ       : ",model.Θ)
+    isnothing(model.exog) || println("Exogenous coefficients: ",model.exog_coefficients)
     println("Residuals σ²      : ",model.σ²)
 end
 
@@ -85,6 +104,21 @@ function SARIMA(y::TimeArray,
     return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,silent=silent,allowMean=allowMean,allowDrift=allowDrift)
 end
 
+function SARIMA(y::TimeArray,
+                exog::Union{TimeArray,Nothing},
+                p::Int64,
+                d::Int64,
+                q::Int64;
+                seasonality::Int64=1,
+                P::Int64 = 0,
+                D::Int64 = 0,
+                Q::Int64 = 0,
+                silent::Bool=true,
+                allowMean::Bool=true,
+                allowDrift::Bool=false)
+    return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,exog=exog,silent=silent,allowMean=allowMean,allowDrift=allowDrift)
+end
+
 function fillFitValues!(model::SARIMAModel,
                         c::Float64,
                         trend::Float64,
@@ -94,7 +128,8 @@ function fillFitValues!(model::SARIMAModel,
                         σ²::Float64,
                         fitInSample::TimeArray;
                         Φ::Union{Vector{Float64},Nothing}=nothing,
-                        Θ::Union{Vector{Float64},Nothing}=nothing)
+                        Θ::Union{Vector{Float64},Nothing}=nothing,
+                        exogCoefficients::Union{Vector{Float64},Nothing}=nothing)
     model.c = c
     model.trend = trend
     model.ϕ = ϕ
@@ -104,16 +139,8 @@ function fillFitValues!(model::SARIMAModel,
     model.Φ = Φ
     model.Θ = Θ
     model.fitInSample = fitInSample
+    model.exog_coefficients = exogCoefficients
 end
-
-function Base.copy(y::TimeArray)
-    return TimeArray(copy(timestamp(y)),copy(values(y)))
-end
-
-function Base.deepcopy(y::TimeArray)
-    return TimeArray(deepcopy(timestamp(y)),deepcopy(values(y)))
-end
-
 
 """
     isFitted(
@@ -131,7 +158,8 @@ function isFitted(model::SARIMAModel)
     estimatedSeasonalAR = (model.P == 0) || !isnothing(model.Φ)
     estimatedSeasonalMA = (model.Q == 0) || !isnothing(model.Θ)
     estimatedIntercept =  !model.allowMean || !isnothing(model.c)
-    return hasResiduals && hasFitInSample && estimatedAR && estimatedMA && estimatedSeasonalAR && estimatedSeasonalMA && estimatedIntercept
+    estimatedExog = isnothing(model.exog) || !isnothing(model.exog_coefficients)
+    return hasResiduals && hasFitInSample && estimatedAR && estimatedMA && estimatedSeasonalAR && estimatedSeasonalMA && estimatedIntercept && estimatedExog
 end
 
 
@@ -178,10 +206,18 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     @assert model.D <= 1 "The estimation only works with D <= 1. Soon this will be fixed"
     
     diffY = differentiate(model.y,model.d,model.D, model.seasonality)
+    
+    if !isnothing(model.exog)
+        diffExog, exogMetadata = automaticDifferentiation(model.exog;seasonalPeriod=model.seasonality)
+        model.metadata["exog"] = exogMetadata
+        diffY = TimeSeries.merge(diffY, diffExog)
+    end
 
     T = length(diffY)
 
-    yValues = values(diffY)
+    yValues = values(diffY)[:,1]
+    nExog = isnothing(model.exog) ? 0 : size(values(diffY),2) - 1
+    exogValues = isnothing(model.exog) ? [] : values(diffY)[:,2:end]
 
     mod = Model(optimizer)
     if silent 
@@ -202,6 +238,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         set_parameter_value(mod[:trend], 0.0)
     end
 
+    @variable(mod,-1 <= β[1:nExog] <= 1)
     @variable(mod,-1 <= ϕ[1:model.p] <= 1)
     @variable(mod,-1 <= Φ[1:model.P] <= 1)
     @variable(mod,ϵ[1:T])
@@ -229,9 +266,9 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     objectiveFunctionDefinition!(mod, objectiveFunction, T, lb)
 
     if model.seasonality > 1
-        @expression(mod, ŷ[t=lb:T], c + trend*t + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q) + sum(Φ[k]*yValues[t - (model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q))
+        @expression(mod, ŷ[t=lb:T], c + trend*t + sum(β[i]*exogValues[t,i] for i=1:nExog) + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q) + sum(Φ[k]*yValues[t - (model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q))
     else
-        @expression(mod, ŷ[t=lb:T], c + trend*t +sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q))
+        @expression(mod, ŷ[t=lb:T], c + trend*t + sum(β[i]*exogValues[t,i] for i=1:nExog) + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q))
     end
     @constraint(mod, [t=lb:T], yValues[t] == ŷ[t] + ϵ[t])
 
@@ -280,8 +317,9 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
 
     c = is_valid(mod, c) ? value(c) : 0.0
     trend = is_valid(mod, trend) ? value(trend) : 0.0
+    exogCoefficients = isnothing(model.exog) ? nothing : value.(β) 
 
-    fillFitValues!(model,c,trend,value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ))
+    fillFitValues!(model,c,trend,value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ),exogCoefficients=exogCoefficients)
 end
 
 function MACoefficientsAreModelParameters(objectiveFunction::String)
@@ -382,11 +420,27 @@ function predict!(model::SARIMAModel, stepsAhead::Int64=1)
     !isFitted(model) && throw(ModelNotFitted())
 
     diffY = differentiate(model.y,model.d,model.D,model.seasonality)
+    valuesExog = []
+    if !isnothing(model.exog)
+        diffExog, _ = automaticDifferentiation(model.exog)
+        # Adjust start points
+        start_date = min(timestamp(diffY)[1],timestamp(diffExog)[1])
+        diffY = from(diffY, start_date)
+        diffExog = from(diffExog, start_date)
+
+        valuesExog = values(diffExog)
+    end
+
+    T = size(diffY,1)
+    exogT = isnothing(model.exog) ? 0 : size(diffExog,1)
+    if !isnothing(model.exog) && T + stepsAhead > exogT
+        throw(MissingExogenousData())
+    end
+
     yValues::Vector{Float64} = deepcopy(values(diffY))
     errors = deepcopy(model.ϵ)
-    t = length(yValues)
     for _= 1:stepsAhead
-        forecastedValue = model.c + model.trend*(t+stepsAhead)
+        forecastedValue = model.c + model.trend*(T+stepsAhead)
         if model.p > 0
             # ∑ϕᵢyₜ -i
             forecastedValue += sum(model.ϕ[i]*yValues[end-i+1] for i=1:model.p)
@@ -402,6 +456,10 @@ function predict!(model::SARIMAModel, stepsAhead::Int64=1)
         if model.Q > 0
             # ∑Θₖϵₜ-(s*k)
             forecastedValue += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q)
+        end
+
+        if !isnothing(model.exog)
+            forecastedValue += valuesExog[T+stepsAhead,:]'model.exog_coefficients
         end
         push!(errors, 0)
         push!(yValues, forecastedValue)
@@ -435,11 +493,28 @@ function predict(model::SARIMAModel, stepsAhead::Int64=1)
     !isFitted(model) && throw(ModelNotFitted())
 
     diffY = differentiate(model.y,model.d,model.D,model.seasonality)
+    valuesExog = []
+    if !isnothing(model.exog)
+        diffExog, _ = automaticDifferentiation(model.exog)
+        # Adjust start points
+        start_date = min(timestamp(diffY)[1],timestamp(diffExog)[1])
+        diffY = from(diffY, start_date)
+        diffExog = from(diffExog, start_date)
+
+        valuesExog = values(diffExog)
+    end
+
+    T = size(diffY,1)
+    exogT = isnothing(model.exog) ? 0 : size(diffExog,1)
+    if !isnothing(model.exog) && T + stepsAhead > exogT
+        throw(MissingExogenousData())
+    end
+
     yValues::Vector{Float64} = deepcopy(values(diffY))
     errors = deepcopy(model.ϵ)
-    t = length(yValues)
+
     for _= 1:stepsAhead
-        forecastedValue = model.c + model.trend*(t+stepsAhead)
+        forecastedValue = model.c + model.trend*(T+stepsAhead)
         if model.p > 0
             # ∑ϕᵢyₜ -i
             forecastedValue += sum(model.ϕ[i]*yValues[end-i+1] for i=1:model.p)
@@ -455,6 +530,9 @@ function predict(model::SARIMAModel, stepsAhead::Int64=1)
         if model.Q > 0
             # ∑Θₖϵₜ-(s*k)
             forecastedValue += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q)
+        end
+        if !isnothing(model.exog)
+            forecastedValue += valuesExog[T+stepsAhead,:]'model.exog_coefficients
         end
         ϵₜ = rand(Normal(0,sqrt(model.σ²)))
         forecastedValue += ϵₜ
@@ -529,6 +607,7 @@ Journal of Statistical Software, 26(3), 2008.
 """
 function auto(
     y::TimeArray;
+    exog::Union{TimeArray,Nothing}=nothing,
     seasonality::Int64=1,
     d::Int64 = -1,
     D::Int64 = -1,
@@ -585,9 +664,9 @@ function auto(
     visitedModels = Dict{String,Dict{String,Any}}()
 
     if seasonality == 1
-        initialNonSeasonalModels!(candidateModels, y, maxp, d, maxq, allowMean, allowDrift)
+        initialNonSeasonalModels!(candidateModels, y, exog, maxp, d, maxq, allowMean, allowDrift)
     else
-        initialSeasonalModels!(candidateModels, y, maxp, d, maxq, maxP, D, maxQ, seasonality, allowMean, allowDrift)
+        initialSeasonalModels!(candidateModels, y, exog, maxp, d, maxq, maxP, D, maxQ, seasonality, allowMean, allowDrift)
     end
 
     # Fit models
@@ -628,22 +707,24 @@ end
 
 function initialNonSeasonalModels!(
     models::Vector{SARIMAModel}, 
-    y::TimeArray, 
+    y::TimeArray,
+    exog::Union{TimeArray,Nothing}, 
     maxp::Int64, 
     d::Int64, 
     maxq::Int64, 
     allowMean::Bool,
     allowDrift::Bool
 )
-    push!(models, SARIMA(y,0,d,0;allowMean=allowMean,allowDrift=allowDrift))
-    (maxp >= 1) && push!(models, SARIMA(y,1,d,0;allowMean=allowMean,allowDrift=allowDrift))
-    (maxq >= 1) && push!(models, SARIMA(y,0,d,1;allowMean=allowMean,allowDrift=allowDrift))
-    (maxp >= 2 && maxq >= 2) && push!(models, SARIMA(y,2,d,2;allowMean=allowMean,allowDrift=allowDrift))
+    push!(models, SARIMA(y,exog,0,d,0;allowMean=allowMean,allowDrift=allowDrift))
+    (maxp >= 1) && push!(models, SARIMA(y,exog,1,d,0;allowMean=allowMean,allowDrift=allowDrift))
+    (maxq >= 1) && push!(models, SARIMA(y,exog,0,d,1;allowMean=allowMean,allowDrift=allowDrift))
+    (maxp >= 2 && maxq >= 2) && push!(models, SARIMA(y,exog,2,d,2;allowMean=allowMean,allowDrift=allowDrift))
 end
 
 function initialSeasonalModels!(
     models::Vector{SARIMAModel}, 
-    y::TimeArray, 
+    y::TimeArray,
+    exog::Union{TimeArray,Nothing}, 
     maxp::Int64, 
     d::Int64, 
     maxq::Int64, 
@@ -654,10 +735,10 @@ function initialSeasonalModels!(
     allowMean::Bool,
     allowDrift::Bool
 )
-    push!(models, SARIMA(y,0,d,0;seasonality=seasonality,P=0,D=D,Q=0,allowMean=allowMean,allowDrift=allowDrift))
-    (maxp >= 1 && maxP >= 1) && push!(models, SARIMA(y,1,d,0;seasonality=seasonality,P=1,D=D,Q=0, allowMean=allowMean,allowDrift=allowDrift))
-    (maxq >= 1 && maxQ >= 1) && push!(models, SARIMA(y,0,d,1;seasonality=seasonality,P=0,D=D,Q=1,allowMean=allowMean,allowDrift=allowDrift))
-    (maxp >= 2 && maxq >= 2 && maxP >= 1 && maxQ >= 1) && push!(models, SARIMA(y,2,d,2;seasonality=seasonality,P=1,D=D,Q=1,allowMean=allowMean,allowDrift=allowDrift))
+    push!(models, SARIMA(y,exog,0,d,0;seasonality=seasonality,P=0,D=D,Q=0,allowMean=allowMean,allowDrift=allowDrift))
+    (maxp >= 1 && maxP >= 1) && push!(models, SARIMA(y,exog,1,d,0;seasonality=seasonality,P=1,D=D,Q=0, allowMean=allowMean,allowDrift=allowDrift))
+    (maxq >= 1 && maxQ >= 1) && push!(models, SARIMA(y,exog,0,d,1;seasonality=seasonality,P=0,D=D,Q=1,allowMean=allowMean,allowDrift=allowDrift))
+    (maxp >= 2 && maxq >= 2 && maxP >= 1 && maxQ >= 1) && push!(models, SARIMA(y,exog,2,d,2;seasonality=seasonality,P=1,D=D,Q=1,allowMean=allowMean,allowDrift=allowDrift))
 end
 
 function getId(
@@ -724,6 +805,7 @@ function addNonSeasonalModels!(
 
         newModel = SARIMA(
                     deepcopy(bestModel.y),
+                    deepcopy(bestModel.exog),
                     newp,
                     bestModel.d,
                     newq;
@@ -758,6 +840,7 @@ function addSeasonalModels!(
 
         newModel = SARIMA(
                     deepcopy(bestModel.y),
+                    deepcopy(bestModel.exog),
                     bestModel.p,
                     bestModel.d,
                     bestModel.q;
@@ -782,7 +865,19 @@ function addChangedConstantModel!(
 )   
     allowDrift = drift && !bestModel.allowDrift
     allowMean = !drift && !bestModel.allowMean
-    newModel = SARIMA(deepcopy(bestModel.y),bestModel.p,bestModel.d,bestModel.q;seasonality=bestModel.seasonality,P=bestModel.P,D=bestModel.D,Q=bestModel.Q,allowMean=allowMean,allowDrift=allowDrift)
+    newModel = SARIMA(
+                deepcopy(bestModel.y),
+                deepcopy(bestModel.exog),
+                bestModel.p,
+                bestModel.d,
+                bestModel.q;
+                seasonality=bestModel.seasonality,
+                P=bestModel.P,
+                D=bestModel.D,
+                Q=bestModel.Q,
+                allowMean=allowMean,
+                allowDrift=allowDrift
+            )
     if !isVisited(newModel,visitedModels)
         push!(candidateModels, newModel)
     end
