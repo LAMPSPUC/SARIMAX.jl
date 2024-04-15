@@ -486,8 +486,11 @@ function predict(model::SARIMAModel, stepsAhead::Int64=1, seed::Int=1234, isSimu
         push!(errors, ϵₜ)
         push!(yValues, forecastedValue)
     end
-    forecast_values = integrate(model.y, yValues[end-stepsAhead+1:end], model.d, model.D, model.seasonality)
-    return forecast_values
+    initialValuesLength = model.d + model.D*model.seasonality
+    initialValuesOffset = length(values(model.y)) - initialValuesLength + 1
+    initialValues::Vector{Float64} = values(model.y)[initialValuesOffset:end]
+    forecast_values = integrate(initialValues, yValues[end-stepsAhead+1:end], model.d, model.D, model.seasonality)
+    return forecast_values[initialValuesLength+1:end]
 end
 
 
