@@ -2,6 +2,7 @@ module Sarimax
 
 import Base: show, print, copy, deepcopy, showerror
 
+using Combinatorics
 using CSV
 using DataFrames
 using Dates
@@ -64,6 +65,7 @@ export aic
 export aicc
 export bic
 export buildDatetimes
+export differentiatedCoefficients
 
 
 end # module Sarimax

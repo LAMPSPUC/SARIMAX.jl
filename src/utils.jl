@@ -92,6 +92,84 @@ function integrate(series::TimeArray, diffSeries::Vector{Fl}, d::Int=0, D::Int=0
 end
 
 """
+    differentiatedCoefficients(d::Int, D::Int, s::Int)
+
+Compute the coefficients for differentiating a time series.
+
+# Arguments
+- `d::Int`: Order of non-seasonal differencing.
+- `D::Int`: Order of seasonal differencing.
+- `s::Int`: Seasonal period.
+
+# Returns
+- `coeffs::Vector{Float64}`: Coefficients for differentiation.
+"""
+function differentiatedCoefficients(d::Int, D::Int, s::Int)
+    # Calculate the length of the resulting coefficients array
+    lenCoeffs = d + D * s + 1
+
+    # Initialize an array to store the coefficients
+    coeffs = zeros(Float64, lenCoeffs)
+
+    # Calculate the binomial coefficients
+    binomialCoeffsd = [binomial(d, i) for i in 0:d]
+    binomialCoeffsD = [binomial(D, j) for j in 0:D]
+
+    # Calculate the coefficients
+    for i in 0:d
+        for j in 0:D
+            coeffs[i + j * s + 1] = (-1)^i * binomialCoeffsd[i + 1] * (-1)^j * binomialCoeffsD[j + 1]
+        end
+    end
+
+    return coeffs
+end
+
+
+"""
+    integrate(initialValues::Vector{T}, diffSeries::Vector{T}, d::Int, D::Int, s::Int) where T
+
+Converts a differentiated time series back to its original scale.
+
+# Arguments
+- `initialValues::Vector{T}`: Initial values of the original time series.
+- `diffSeries::Vector{T}`: Differentiated time series.
+- `d::Int`: Order of non-seasonal differencing.
+- `D::Int`: Order of seasonal differencing.
+- `s::Int`: Seasonal period.
+
+# Returns
+- `origSeries::Vector{Float64}`: Time series in the original scale.
+"""
+function integrate(initialValues::Vector{T}, diffSeries::Vector{T}, d::Int, D::Int, s::Int) where T
+    # Get the coefficients for differentiation
+    coeffs = differentiatedCoefficients(d, D, s)
+    lenCoeffs = length(coeffs)
+    
+    # Calculate the length of the original series
+    lenSeries = length(diffSeries) + d + D*s
+    
+    # Initialize an array to store the original series
+    origSeries = zeros(Float64, lenSeries)
+    
+    # Copy the initial values to the original series
+    origSeries[1:length(initialValues)] .= initialValues
+    initialOffset = length(initialValues)
+    
+    # Iterate through the differentiated series and compute the original series
+    for i in 1:length(diffSeries)
+        # Calculate the value at the current index
+        origSeries[initialOffset+i] = diffSeries[i]
+        
+        # Add contributions from past observations
+        origSeries[initialOffset+i] -= coeffs[2:end]'origSeries[initialOffset+i-1:-1:initialOffset+i-lenCoeffs+1]
+    end
+    
+    return origSeries
+end
+
+
+"""
     selectSeasonalIntegrationOrder(y, seasonality, test)
 
 Selects the seasonal integration order for a time series based on the specified test.
