@@ -370,72 +370,37 @@ end
 """
     predict!(
         model::SARIMAModel,
-        stepsAhead::Int64=1
+        stepsAhead::Int64 = 1,
+        seed::Int = 1234,
+        isSimulation::Bool = false
     )
 
 Predicts the SARIMA model for the next `stepsAhead` periods.
 The resulting forecast is stored within the model in the `forecast` field.
 
+# Arguments
+- `model::SARIMAModel`: The SARIMA model to make predictions.
+- `stepsAhead::Int64`: The number of periods ahead to forecast (default: 1).
+- `seed::Int`: Seed for random number generation when simulating forecasts (default: 1234).
+- `isSimulation::Bool`: Whether to perform a simulation-based forecast (default: false).
+
 # Example
-```jldoctest
+```julia
 julia> airPassengers = loadDataset(AIR_PASSENGERS)
 
-julia> model = SARIMA(airPassengers,0,1,1;seasonality=12,P=0,D=1,Q=1)
+julia> model = SARIMA(airPassengers, 0, 1, 1; seasonality=12, P=0, D=1, Q=1)
 
 julia> fit!(model)
 
 julia> predict!(model; stepsAhead=12)
-```
 """
-function predict!(model::SARIMAModel, stepsAhead::Int64=1)
-    !isFitted(model) && throw(ModelNotFitted())
-
-    diffY = differentiate(model.y,model.d,model.D,model.seasonality)
-    valuesExog = []
-    if !isnothing(model.exog)
-        diffExog, _ = automaticDifferentiation(model.exog)
-        # Adjust start points
-        start_date = min(timestamp(diffY)[1],timestamp(diffExog)[1])
-        diffY = from(diffY, start_date)
-        diffExog = from(diffExog, start_date)
-
-        valuesExog = values(diffExog)
-    end
-
-    T = size(diffY,1)
-    exogT = isnothing(model.exog) ? 0 : size(diffExog,1)
-    if !isnothing(model.exog) && T + stepsAhead > exogT
-        throw(MissingExogenousData())
-    end
-
-    yValues::Vector{Float64} = deepcopy(values(diffY))
-    errors = deepcopy(model.ϵ)
-    for _= 1:stepsAhead
-        forecastedValue = model.c + model.trend*(T+stepsAhead)
-        if model.p > 0
-            # ∑ϕᵢyₜ -i
-            forecastedValue += sum(model.ϕ[i]*yValues[end-i+1] for i=1:model.p)
-        end
-        if model.q > 0
-            # ∑θᵢϵₜ-i
-            forecastedValue += sum(model.θ[j]*errors[end-j+1] for j=1:model.q)
-        end
-        if model.P > 0
-            # ∑Φₖyₜ-(s*k)
-            forecastedValue += sum(model.Φ[k]*yValues[end-(model.seasonality*k)+1] for k=1:model.P)
-        end
-        if model.Q > 0
-            # ∑Θₖϵₜ-(s*k)
-            forecastedValue += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q)
-        end
-
-        if !isnothing(model.exog)
-            forecastedValue += valuesExog[T+stepsAhead,:]'model.exog_coefficients
-        end
-        push!(errors, 0)
-        push!(yValues, forecastedValue)
-    end
-    forecast_values = integrate(model.y, yValues[end-stepsAhead+1:end], model.d, model.D, model.seasonality)
+function predict!(
+    model::SARIMAModel,
+    stepsAhead::Int64 = 1,
+    seed::Int = 1234,
+    isSimulation::Bool = false
+)
+    forecast_values = predict(model, stepsAhead, seed, isSimulation)
     model.forecast = forecast_values
 end
 
@@ -444,24 +409,33 @@ end
     predict(
         model::SARIMAModel, 
         stepsAhead::Int64 = 1, 
+        seed::Int = 1234, 
+        isSimulation::Bool = true
     )
 
-Predicts the SARIMA model for the next `stepsAhead` periods assuming that the model`s estimated σ².
+Predicts the SARIMA model for the next `stepsAhead` periods assuming the model's estimated σ² in case of a simulation.
 Returns the forecasted values.
+
+# Arguments
+- `model::SARIMAModel`: The SARIMA model to make predictions.
+- `stepsAhead::Int64`: The number of periods ahead to forecast (default: 1).
+- `seed::Int`: Seed for random number generation when simulating forecasts (default: 1234).
+- `isSimulation::Bool`: Whether to perform a simulation-based forecast (default: true).
 
 # Example
 ```jldoctest
 julia> airPassengers = loadDataset(AIR_PASSENGERS)
 
-julia> model = SARIMA(airPassengers,0,1,1;seasonality=12,P=0,D=1,Q=1)
+julia> model = SARIMA(airPassengers, 0, 1, 1; seasonality=12, P=0, D=1, Q=1)
 
 julia> fit!(model)
 
 julia> forecastedValues = predict(model, stepsAhead=12)
-```
+````
 """
-function predict(model::SARIMAModel, stepsAhead::Int64=1)
+function predict(model::SARIMAModel, stepsAhead::Int64=1, seed::Int=1234, isSimulation::Bool=true)
     !isFitted(model) && throw(ModelNotFitted())
+    isSimulation && Random.seed!(seed)
 
     diffY = differentiate(model.y,model.d,model.D,model.seasonality)
     valuesExog = []
@@ -505,8 +479,10 @@ function predict(model::SARIMAModel, stepsAhead::Int64=1)
         if !isnothing(model.exog)
             forecastedValue += valuesExog[T+stepsAhead,:]'model.exog_coefficients
         end
-        ϵₜ = rand(Normal(0,sqrt(model.σ²)))
+
+        ϵₜ = isSimulation ? rand(Normal(0,sqrt(model.σ²))) : 0
         forecastedValue += ϵₜ
+
         push!(errors, ϵₜ)
         push!(yValues, forecastedValue)
     end
@@ -538,15 +514,12 @@ julia> scenarios = simulate(model, stepsAhead=12, numScenarios=1000)
 """
 function simulate(model::SARIMAModel, stepsAhead::Int64=1, numScenarios::Int64=200, seed::Int64=1234)
     !isFitted(model) && throw(ModelNotFitted())
-    Random.seed!(seed)
     scenarios::Vector{Vector{Float64}} = []
     for _=1:numScenarios
-        push!(scenarios, predict(model, stepsAhead))
+        push!(scenarios, predict(model, stepsAhead, seed, true))
     end
     return scenarios
 end
-
-
 
 """
     auto(
