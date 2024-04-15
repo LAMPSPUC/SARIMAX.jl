@@ -61,7 +61,7 @@ mutable struct SARIMAModel <: SarimaxModel
         yMetadata["weekDaysOnly"] = granularityInfo.weekdays
         yMetadata["startDatetime"] = timestamp(y)[1]
         yMetadata["endDatetime"] = timestamp(y)[end]
-        if isnothing(exog)
+        if !isnothing(exog)
             @assert yMetadata["startDatetime"] == timestamp(exog)[1] "The endogenous and exogenous variables must start at the same timestamp"
             @assert yMetadata["endDatetime"] <= timestamp(exog)[end] "The exogenous variables must end after the endogenous variables"
             @assert granularityInfo == identifyGranularity(timestamps(exog)) "The endogenous and exogenous variables must have the same granularity, frequency and pattern"
@@ -274,44 +274,15 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
 
     optimizeModel!(mod, model, objectiveFunction)
     
-    # TODO: - The reconciliation works for just d,D <= 1
-    fitInSample::TimeArray = TimeArray(timestamp(diffY)[lb:end], OffsetArrays.no_offset_view(value.(ŷ)))
-    
-    if model.d > 0 # We differenciated the timeseries
-        # Δyₜ = yₜ - y_t-1 => yₜ = Δyₜ + y_t-1
-        fittedValues = values(fitInSample)
-        yOriginal = values(model.y)
-        for _=1:model.d
-            originalIndex = findfirst(ts -> ts == timestamp(fitInSample)[1], timestamp(model.y))
-            for j=1:length(fitInSample)
-                fittedValues[j] += yOriginal[originalIndex+(j-1)-1]
-            end
-        end
-        fitInSample = TimeArray(timestamp(fitInSample), fittedValues)
-    end
+    fittedValues::Vector{Float64} = OffsetArrays.no_offset_view(value.(ŷ))
+    fittedOriginalLengthDifference = length(values(model.y)) - length(fittedValues)
+    initialValuesLength = model.d + model.D*model.seasonality
+    initialValuesOffset = fittedOriginalLengthDifference > initialValuesLength ? fittedOriginalLengthDifference - initialValuesLength + 1 : 1
+    initialValues::Vector{Float64} = values(model.y)[initialValuesOffset:fittedOriginalLengthDifference]
 
-    if model.D > 0 # We differenciated the timeseries
-        # Δyₜ = yₜ - y_t-12 => yₜ = Δyₜ + y_t-12
-        fittedValues = values(fitInSample)
-        yOriginal = values(model.y)
-        for i=1:model.D
-            originalIndex = findfirst(ts -> ts == timestamp(fitInSample)[1], timestamp(model.y))
-            for j=1:length(fitInSample)
-                fittedValues[j] += yOriginal[originalIndex+(j-1)-model.seasonality*i]
-            end
-        end
-        fitInSample = TimeArray(timestamp(fitInSample), fittedValues)
-    end
-
-    if model.D > 0 && model.d > 0 # We differenciated the timeseries
-        fittedValues = values(fitInSample)
-        yOriginal = values(model.y)
-        for j=1:length(fitInSample)
-            originalIndex = findfirst(ts -> ts == timestamp(fitInSample)[1], timestamp(model.y))
-            fittedValues[j] -= yOriginal[originalIndex+(j-1)-(model.seasonality+1)]
-        end
-        fitInSample = TimeArray(timestamp(fitInSample), fittedValues)
-    end
+    integratedFit = integrate(initialValues, fittedValues, model.d, model.D, model.seasonality)
+    lengthIntegratedFit = length(integratedFit)
+    fitInSample::TimeArray = TimeArray(timestamp(model.y)[end-lengthIntegratedFit+1:end],integratedFit)
 
     residualsVariance = computeSARIMAModelVariance(mod, lb, objectiveFunction)
 
