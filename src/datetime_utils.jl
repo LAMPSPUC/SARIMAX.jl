@@ -23,7 +23,7 @@ An array of DateTime objects.
 """
 function buildDatetimes(
     startDatetime::T, 
-    granularity::Dates.Period,
+    granularity::P where P <: Dates.Period,
     weekDaysOnly::Bool, 
     datetimesLength::Int64,
 ) where T

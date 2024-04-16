@@ -19,7 +19,7 @@ mutable struct SARIMAModel <: SarimaxModel
     exog_coefficients::Union{Vector{Float64},Nothing}
     σ²::Float64
     fitInSample::Union{TimeArray,Nothing}
-    forecast::Union{Array{Float64},Nothing}
+    forecast::Union{TimeArray,Nothing}
     silent::Bool
     allowMean::Bool
     allowDrift::Bool
@@ -401,7 +401,8 @@ function predict!(
     isSimulation::Bool = false
 )
     forecast_values = predict(model, stepsAhead, seed, isSimulation)
-    model.forecast = forecast_values
+    forecastTimestamps::Vector{TimeType} = buildDatetimes(timestamp(model.y)[end], getproperty(Dates, model.metadata["granularity"])(model.metadata["frequency"]), model.metadata["weekDaysOnly"], stepsAhead)
+    model.forecast = TimeArray(forecastTimestamps,forecast_values)
 end
 
 
