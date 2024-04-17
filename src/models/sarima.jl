@@ -119,6 +119,37 @@ function SARIMA(y::TimeArray,
     return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,exog=exog,silent=silent,allowMean=allowMean,allowDrift=allowDrift)
 end
 
+"""
+    fillFitValues!(
+        model::SARIMAModel,
+        c::Float64,
+        trend::Float64,
+        ϕ::Vector{Float64},
+        θ::Vector{Float64},
+        ϵ::Vector{Float64},
+        σ²::Float64,
+        fitInSample::TimeArray;
+        Φ::Union{Vector{Float64}, Nothing}=nothing,
+        Θ::Union{Vector{Float64}, Nothing}=nothing,
+        exogCoefficients::Union{Vector{Float64}, Nothing}=nothing
+    )
+
+Fills the SARIMA model with fitted values.
+
+# Arguments
+- `model::SARIMAModel`: The SARIMA model to be filled.
+- `c::Float64`: The intercept value.
+- `trend::Float64`: The trend value.
+- `ϕ::Vector{Float64}`: The autoregressive coefficients.
+- `θ::Vector{Float64}`: The moving average coefficients.
+- `ϵ::Vector{Float64}`: The residuals.
+- `σ²::Float64`: The model's σ².
+- `fitInSample::TimeArray`: The fitted values.
+- `Φ::Union{Vector{Float64}, Nothing}`: The seasonal autoregressive coefficients. Default is `nothing`.
+- `Θ::Union{Vector{Float64}, Nothing}`: The seasonal moving average coefficients. Default is `nothing`.
+- `exogCoefficients::Union{Vector{Float64}, Nothing}`: The exogenous variable coefficients. Default is `nothing`.
+
+"""
 function fillFitValues!(model::SARIMAModel,
                         c::Float64,
                         trend::Float64,
@@ -143,11 +174,15 @@ function fillFitValues!(model::SARIMAModel,
 end
 
 """
-    isFitted(
-        model::SARIMAModel
-    )
+    isFitted(model::SARIMAModel)
 
-    Returns true if the SARIMA model has been fitted.
+Returns `true` if the SARIMA model has been fitted.
+
+# Arguments
+- `model::SARIMAModel`: The SARIMA model.
+
+# Returns
+- `Bool`: `true` if the model has been fitted; otherwise, `false`.
 
 """
 function isFitted(model::SARIMAModel)
@@ -162,13 +197,16 @@ function isFitted(model::SARIMAModel)
     return hasResiduals && hasFitInSample && estimatedAR && estimatedMA && estimatedSeasonalAR && estimatedSeasonalMA && estimatedIntercept && estimatedExog
 end
 
-
 """
-    getHyperparametersNumber(
-        model::SARIMAModel
-    )
+    getHyperparametersNumber(model::SARIMAModel)
 
-    Returns the number of hyperparameters of a SARIMA model.
+Returns the number of hyperparameters of a SARIMA model.
+
+# Arguments
+- `model::SARIMAModel`: The SARIMA model.
+
+# Returns
+- `Int`: The number of hyperparameters.
 
 """
 function getHyperparametersNumber(model::SARIMAModel)
@@ -185,10 +223,16 @@ end
         objectiveFunction::String="mse"
     )
 
-Estimate the Sarima model parameters via non linear least squares. The resulting optimal
-parameters as well as the resisuals and the model σ² are stored within the model.
-The default objective function used to estimate the parameters is the mean squared error (MSE)
-but it can be changed to the maximum likelihood (ML) by setting the `objectiveFunction` parameter to "ml". 
+Estimate the SARIMA model parameters via non-linear least squares. The resulting optimal
+parameters as well as the residuals and the model's σ² are stored within the model.
+The default objective function used to estimate the parameters is the mean squared error (MSE),
+but it can be changed to the maximum likelihood (ML) by setting the `objectiveFunction` parameter to "ml".
+
+# Arguments
+- `model::SARIMAModel`: The SARIMA model to be fitted.
+- `silent::Bool`: Whether to suppress solver output. Default is `true`.
+- `optimizer::DataType`: The optimizer to be used for optimization. Default is `Ipopt.Optimizer`.
+- `objectiveFunction::String`: The objective function used for estimation. Default is "mse".
 
 # Example
 ```jldoctest
@@ -293,10 +337,30 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     fillFitValues!(model,c,trend,value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ),exogCoefficients=exogCoefficients)
 end
 
+"""
+    MACoefficientsAreModelParameters(objectiveFunction::String)
+
+Determines if the moving average coefficients are treated as model parameters based on the objective function.
+
+# Arguments
+- `objectiveFunction::String`: The objective function used.
+
+# Returns
+- `Bool`: `true` if the moving average coefficients are treated as model parameters; otherwise, `false`.
+"""
 function MACoefficientsAreModelParameters(objectiveFunction::String)
     return objectiveFunction == "bilevel"
 end
 
+"""
+    includeSolverParameters!(model::Model)
+
+Includes solver-specific parameters in the JuMP model.
+
+# Arguments
+- `model::Model`: The JuMP model to which solver parameters will be included.
+
+"""
 function includeSolverParameters!(model::Model)
     if solver_name(model) == "Gurobi"
         set_optimizer_attribute(mod, "NonConvex", 2)
@@ -310,6 +374,15 @@ end
         T::Int,
         lb::Int
     )
+
+Defines the objective function for optimization in the SARIMA model.
+
+# Arguments
+- `model::Model`: The JuMP model.
+- `objectiveFunction::String`: The objective function to be defined.
+- `T::Int`: The total number of observations.
+- `lb::Int`: The lag from which to start considering observations.
+
 """
 function objectiveFunctionDefinition!(model::Model, objectiveFunction::String, T::Int, lb::Int)
     if objectiveFunction == "mse"
@@ -328,6 +401,17 @@ function objectiveFunctionDefinition!(model::Model, objectiveFunction::String, T
     end
 end
 
+"""
+    optimizeModel!(jumpModel::Model, model::SARIMAModel, objectiveFunction::String)
+
+Optimizes the SARIMA model using the specified objective function.
+
+# Arguments
+- `jumpModel::Model`: The JuMP model to be optimized.
+- `model::SARIMAModel`: The SARIMA model to be optimized.
+- `objectiveFunction::String`: The objective function used for optimization.
+
+"""
 function optimizeModel!(jumpModel::Model, model::SARIMAModel, objectiveFunction::String)
     JuMP.optimize!(jumpModel)
 
@@ -359,6 +443,20 @@ function optimizeModel!(jumpModel::Model, model::SARIMAModel, objectiveFunction:
     end
 end
 
+"""
+    computeSARIMAModelVariance(model::Model, lb::Int, objectiveFunction::String)
+
+Computes the variance of the SARIMA model's errors.
+
+# Arguments
+- `model::Model`: The SARIMA model.
+- `lb::Int`: The lag from which to compute the variance.
+- `objectiveFunction::String`: The objective function used for fitting the model.
+
+# Returns
+- `Float64`: The computed variance.
+
+"""
 function computeSARIMAModelVariance(model::Model, lb::Int, objectiveFunction::String)
     if objectiveFunction == "ml"
         return value(model[:σ])^2
@@ -502,14 +600,22 @@ end
         numScenarios::Int64 = 200
     )
 
-Simulates the SARIMA model for the next `stepsAhead` periods assuming that the model`s estimated σ².
+Simulates the SARIMA model for the next `stepsAhead` periods assuming that the model's estimated σ².
 Returns a vector of `numScenarios` scenarios of the forecasted values.
+
+# Arguments
+- `model::SARIMAModel`: The SARIMA model to simulate.
+- `stepsAhead::Int64`: The number of periods ahead to simulate. Default is 1.
+- `numScenarios::Int64`: The number of simulation scenarios. Default is 200.
+
+# Returns
+- `Vector{Vector{Float64}}`: A vector of scenarios, each containing the forecasted values for the next `stepsAhead` periods.
 
 # Example
 ```jldoctest
 julia> airPassengers = loadDataset(AIR_PASSENGERS)
 
-julia> model = SARIMA(airPassengers,0,1,1;seasonality=12,P=0,D=1,Q=1)
+julia> model = SARIMA(airPassengers, 0, 1, 1; seasonality=12, P=0, D=1, Q=1)
 
 julia> fit!(model)
 
@@ -528,6 +634,7 @@ end
 """
     auto(
         y::TimeArray;
+        exog::Union{TimeArray,Nothing}=nothing,
         seasonality::Int64=1,
         d::Int64 = -1,
         D::Int64 = -1,
@@ -539,19 +646,39 @@ end
         maxQ::Int64 = 2,
         informationCriteria::String = "aicc",
         allowMean::Bool = true,
+        allowDrift::Bool = true,
         integrationTest::String = "kpss",
         seasonalIntegrationTest::String = "seas",
-        objectiveFunction::String = "mse"
+        objectiveFunction::String = "mse",
+        assertStationarity::Bool = false,
+        assertInvertibility::Bool = false
     )
 
-Automatically fits the best [`SARIMA`](@ref) model according to the best information criteria 
+Automatically fits the best SARIMA model according to the specified parameters.
 
+# Arguments
+- `y::TimeArray`: The time series data.
+- `exog::Union{TimeArray,Nothing}`: Optional exogenous variables. If `Nothing`, no exogenous variables are used.
+- `seasonality::Int64`: The seasonality period. Default is 1 (non-seasonal).
+- `d::Int64`: The degree of differencing for the non-seasonal part. Default is -1 (auto-select).
+- `D::Int64`: The degree of differencing for the seasonal part. Default is -1 (auto-select).
+- `maxp::Int64`: The maximum autoregressive order for the non-seasonal part. Default is 5.
+- `maxd::Int64`: The maximum integration order for the non-seasonal part. Default is 2.
+- `maxq::Int64`: The maximum moving average order for the non-seasonal part. Default is 5.
+- `maxP::Int64`: The maximum autoregressive order for the seasonal part. Default is 2.
+- `maxD::Int64`: The maximum integration order for the seasonal part. Default is 1.
+- `maxQ::Int64`: The maximum moving average order for the seasonal part. Default is 2.
+- `informationCriteria::String`: The information criteria to be used for model selection. Options are "aic", "aicc", or "bic". Default is "aicc".
+- `allowMean::Bool`: Whether to include a mean term in the model. Default is true.
+- `allowDrift::Bool`: Whether to include a drift term in the model. Default is true.
+- `integrationTest::String`: The integration test to be used for determining the non-seasonal integration order. Default is "kpss".
+- `seasonalIntegrationTest::String`: The integration test to be used for determining the seasonal integration order. Default is "seas".
+- `objectiveFunction::String`: The objective function to be used for model selection. Options are "mse", "ml", or "bilevel". Default is "mse".
+- `assertStationarity::Bool`: Whether to assert stationarity of the fitted model. Default is false.
+- `assertInvertibility::Bool`: Whether to assert invertibility of the fitted model. Default is false.
 
 # References
-* Hyndman, RJ and Khandakar. 
-Automatic time series forecasting: The forecast package for R.
-Journal of Statistical Software, 26(3), 2008.
-
+- Hyndman, RJ and Khandakar. "Automatic time series forecasting: The forecast package for R." Journal of Statistical Software, 26(3), 2008.
 """
 function auto(
     y::TimeArray;
@@ -574,7 +701,8 @@ function auto(
     assertStationarity::Bool = false,
     assertInvertibility::Bool = false
 )
-    @assert seasonality >= 1 "seasonality must be greater than 1. Use 1 for non seasonal models"
+    # Parameter validation
+    @assert seasonality >= 1 "seasonality must be greater than 1. Use 1 for non-seasonal models"
     @assert d >= -1 
     @assert d <= maxd
     @assert D >= -1
@@ -592,6 +720,7 @@ function auto(
 
     informationCriteriaFunction = getInformationCriteriaFunction(informationCriteria)
 
+    # Adjustments based on parameters
     if seasonality == 1
         D = 0
     end
@@ -607,7 +736,7 @@ function auto(
     allowMean = allowMean && (d+D == 0)
     allowDrift = allowDrift && (d+D == 1)
 
-    # Include intial models
+    # Include initial models
     candidateModels = Vector{SARIMAModel}()
     visitedModels = Dict{String,Dict{String,Any}}()
 
@@ -642,7 +771,22 @@ function auto(
     return bestModel
 end
 
-function getInformationCriteriaFunction(informationCriteria)
+
+"""
+    getInformationCriteriaFunction(informationCriteria)
+
+Returns the information criteria function corresponding to the given `informationCriteria`.
+
+# Arguments
+- `informationCriteria::String`: The name of the information criteria ("aic", "aicc", or "bic").
+
+# Returns
+- `Function`: The information criteria function corresponding to the input.
+
+# Throws
+- `ArgumentError`: If the provided `informationCriteria` is not one of "aic", "aicc", or "bic".
+"""
+function getInformationCriteriaFunction(informationCriteria::String)
     if informationCriteria == "aic"
         return aic
     elseif informationCriteria == "aicc"
@@ -650,9 +794,38 @@ function getInformationCriteriaFunction(informationCriteria)
     elseif informationCriteria == "bic"
         return bic
     end
-    throw(ArgumentError("The information criteria $informationCriteria is not supported"))
+    throw(ArgumentError("The information criteria '$informationCriteria' is not supported"))
 end
 
+"""
+    initialNonSeasonalModels!(
+        models::Vector{SARIMAModel}, 
+        y::TimeArray,
+        exog::Union{TimeArray,Nothing}, 
+        maxp::Int64, 
+        d::Int64, 
+        maxq::Int64, 
+        allowMean::Bool,
+        allowDrift::Bool
+    )
+
+Populates the `models` vector with initial non-seasonal SARIMA models based on the specified parameters.
+The models added are:
+- SARIMA(0, d, 0)
+- SARIMA(1, d, 0)
+- SARIMA(0, d, 1)
+- SARIMA(2, d, 2)
+
+# Arguments
+- `models::Vector{SARIMAModel}`: A vector to which the initial SARIMA models will be appended.
+- `y::TimeArray`: The time series data.
+- `exog::Union{TimeArray,Nothing}`: Optional exogenous variables. If `Nothing`, no exogenous variables are used.
+- `maxp::Int64`: The maximum autoregressive order.
+- `d::Int64`: The degree of differencing.
+- `maxq::Int64`: The maximum moving average order.
+- `allowMean::Bool`: Whether to include a mean term in the model.
+- `allowDrift::Bool`: Whether to include a drift term in the model.
+"""
 function initialNonSeasonalModels!(
     models::Vector{SARIMAModel}, 
     y::TimeArray,
@@ -663,12 +836,49 @@ function initialNonSeasonalModels!(
     allowMean::Bool,
     allowDrift::Bool
 )
-    push!(models, SARIMA(y,exog,0,d,0;allowMean=allowMean,allowDrift=allowDrift))
-    (maxp >= 1) && push!(models, SARIMA(y,exog,1,d,0;allowMean=allowMean,allowDrift=allowDrift))
-    (maxq >= 1) && push!(models, SARIMA(y,exog,0,d,1;allowMean=allowMean,allowDrift=allowDrift))
-    (maxp >= 2 && maxq >= 2) && push!(models, SARIMA(y,exog,2,d,2;allowMean=allowMean,allowDrift=allowDrift))
+    push!(models, SARIMA(y, exog, 0, d, 0; allowMean=allowMean, allowDrift=allowDrift))
+    (maxp >= 1) && push!(models, SARIMA(y, exog, 1, d, 0; allowMean=allowMean, allowDrift=allowDrift))
+    (maxq >= 1) && push!(models, SARIMA(y, exog, 0, d, 1; allowMean=allowMean, allowDrift=allowDrift))
+    (maxp >= 2 && maxq >= 2) && push!(models, SARIMA(y, exog, 2, d, 2; allowMean=allowMean, allowDrift=allowDrift))
 end
 
+"""
+    initialSeasonalModels!(
+        models::Vector{SARIMAModel}, 
+        y::TimeArray,
+        exog::Union{TimeArray,Nothing}, 
+        maxp::Int64, 
+        d::Int64, 
+        maxq::Int64, 
+        maxP::Int64, 
+        D::Int64, 
+        maxQ::Int64, 
+        seasonality::Int64, 
+        allowMean::Bool,
+        allowDrift::Bool
+    )
+
+Populates the `models` vector with initial seasonal SARIMA models based on the specified parameters.
+The models added are:
+- SARIMA(0, d, 0)(0, D, 0)
+- SARIMA(1, d, 0)(1, D, 0)
+- SARIMA(0, d, 1)(0, D, 1)
+- SARIMA(2, d, 2)(1, D, 1)
+
+# Arguments
+- `models::Vector{SARIMAModel}`: A vector to which the initial SARIMA models will be appended.
+- `y::TimeArray`: The time series data.
+- `exog::Union{TimeArray,Nothing}`: Optional exogenous variables. If `Nothing`, no exogenous variables are used.
+- `maxp::Int64`: The maximum autoregressive order for non-seasonal part.
+- `d::Int64`: The degree of differencing for non-seasonal part.
+- `maxq::Int64`: The maximum moving average order for non-seasonal part.
+- `maxP::Int64`: The maximum autoregressive order for seasonal part.
+- `D::Int64`: The degree of differencing for seasonal part.
+- `maxQ::Int64`: The maximum moving average order for seasonal part.
+- `seasonality::Int64`: The seasonality period.
+- `allowMean::Bool`: Whether to include a mean term in the model.
+- `allowDrift::Bool`: Whether to include a drift term in the model.
+"""
 function initialSeasonalModels!(
     models::Vector{SARIMAModel}, 
     y::TimeArray,
@@ -683,23 +893,97 @@ function initialSeasonalModels!(
     allowMean::Bool,
     allowDrift::Bool
 )
-    push!(models, SARIMA(y,exog,0,d,0;seasonality=seasonality,P=0,D=D,Q=0,allowMean=allowMean,allowDrift=allowDrift))
-    (maxp >= 1 && maxP >= 1) && push!(models, SARIMA(y,exog,1,d,0;seasonality=seasonality,P=1,D=D,Q=0, allowMean=allowMean,allowDrift=allowDrift))
-    (maxq >= 1 && maxQ >= 1) && push!(models, SARIMA(y,exog,0,d,1;seasonality=seasonality,P=0,D=D,Q=1,allowMean=allowMean,allowDrift=allowDrift))
-    (maxp >= 2 && maxq >= 2 && maxP >= 1 && maxQ >= 1) && push!(models, SARIMA(y,exog,2,d,2;seasonality=seasonality,P=1,D=D,Q=1,allowMean=allowMean,allowDrift=allowDrift))
+    push!(models, SARIMA(y, exog, 0, d, 0; seasonality=seasonality, P=0, D=D, Q=0, allowMean=allowMean, allowDrift=allowDrift))
+    (maxp >= 1 && maxP >= 1) && push!(models, SARIMA(y, exog, 1, d, 0; seasonality=seasonality, P=1, D=D, Q=0, allowMean=allowMean, allowDrift=allowDrift))
+    (maxq >= 1 && maxQ >= 1) && push!(models, SARIMA(y, exog, 0, d, 1; seasonality=seasonality, P=0, D=D, Q=1, allowMean=allowMean, allowDrift=allowDrift))
+    (maxp >= 2 && maxq >= 2 && maxP >= 1 && maxQ >= 1) && push!(models, SARIMA(y, exog, 2, d, 2; seasonality=seasonality, P=1, D=D, Q=1, allowMean=allowMean, allowDrift=allowDrift))
 end
 
+"""
+    getId(model::SARIMAModel)
+
+Returns a string representation of the SARIMA model.
+
+# Arguments
+- `model::SARIMAModel`: The SARIMA model.
+
+# Returns
+- `String`: A string representation of the SARIMA model.
+
+# Example
+```jldoctest
+
+julia> model = SARIMA(1, 0, 1; P=1, D=0, Q=1, seasonality=12, allowMean=true, allowDrift=false)
+
+julia> getId(model)  # Returns "SARIMA(1,0,1)(1,0,1 s=12, c=true, drift=false)"
+```
+"""
 function getId(
     model::SARIMAModel
 )
     return "SARIMA($(model.p),$(model.d),$(model.q))($(model.P),$(model.D),$(model.Q) s=$(model.seasonality), c=$(model.allowMean), drift=$(model.allowDrift))"
 end
 
+"""
+    isVisited(model::SARIMAModel, visitedModels::Dict{String,Dict{String,Any}})
+
+Checks if a SARIMA model has been visited during the search process.
+
+# Arguments
+- `model::SARIMAModel`: The SARIMA model to check.
+- `visitedModels::Dict{String,Dict{String,Any}}`: A dictionary containing visited SARIMA models.
+
+# Returns
+- `Bool`: `true` if the model has been visited, `false` otherwise.
+
+# Example
+```jldoctest
+julia> model = SARIMA(1, 0, 1; P=1, D=0, Q=1, seasonality=12, allowMean=true, allowDrift=false)
+
+julia> visitedModels = Dict{String,Dict{String,Any}}("SARIMA(1,0,1)(1,0,1 s=12, c=true, drift=false)" => Dict("criteria" => 123))
+
+julia> isVisited(model, visitedModels)  # Returns true
+```
+"""
 function isVisited(model::SARIMAModel, visitedModels::Dict{String,Dict{String,Any}})
     id = getId(model)
-    return haskey(visitedModels,id)
+    return haskey(visitedModels, id)
 end
 
+"""
+    localSearch!(
+        candidateModels::Vector{SARIMAModel},
+        visitedModels::Dict{String,Dict{String,Any}},
+        informationCriteriaFunction::Function,
+        objectiveFunction::String = "mse",
+        assertStationarity::Bool = false,
+        assertInvertibility::Bool = false
+    )
+
+Performs a local search to find the best SARIMA model among the candidate models.
+
+# Arguments
+- `candidateModels::Vector{SARIMAModel}`: A vector of candidate SARIMA models to search from.
+- `visitedModels::Dict{String,Dict{String,Any}}`: A dictionary containing information about visited models.
+- `informationCriteriaFunction::Function`: A function to calculate the information criteria for a SARIMA model.
+- `objectiveFunction::String`: The objective function to be used for fitting models. Default is "mse".
+- `assertStationarity::Bool`: Whether to assert stationarity of the fitted models. Default is false.
+- `assertInvertibility::Bool`: Whether to assert invertibility of the fitted models. Default is false.
+
+# Returns
+- `Tuple{Float64, Union{SARIMAModel, Nothing}}`: A tuple containing the best criteria value and the corresponding best model found.
+
+# Example
+```jldoctest
+julia> candidateModels = [SARIMA(1, 0, 1), SARIMA(0, 1, 1)]
+
+julia> visitedModels = Dict{String,Dict{String,Any}}()
+
+julia> informationCriteriaFunction = aicc
+
+julia> localSearch!(candidateModels, visitedModels, informationCriteriaFunction)  
+```
+"""
 function localSearch!(
     candidateModels::Vector{SARIMAModel},
     visitedModels::Dict{String,Dict{String,Any}},
@@ -735,6 +1019,29 @@ function localSearch!(
     return localBestCriteria, localBestModel
 end
 
+"""
+    addNonSeasonalModels!(
+        bestModel::SARIMAModel, 
+        candidateModels::Vector{SARIMAModel},
+        visitedModels::Dict{String,Dict{String,Any}},  
+        maxp::Int64, 
+        maxq::Int64, 
+        allowMean::Bool,
+        allowDrift::Bool
+    )
+
+Adds non-seasonal SARIMA models to the candidate models vector based on the best SARIMA model found.
+
+# Arguments
+- `bestModel::SARIMAModel`: The best SARIMA model found so far.
+- `candidateModels::Vector{SARIMAModel}`: A vector of candidate SARIMA models to add new models to.
+- `visitedModels::Dict{String,Dict{String,Any}}`: A dictionary containing information about visited models.
+- `maxp::Int64`: The maximum autoregressive order for non-seasonal part.
+- `maxq::Int64`: The maximum moving average order for non-seasonal part.
+- `allowMean::Bool`: Whether to include a mean term in the model.
+- `allowDrift::Bool`: Whether to include a drift term in the model.
+
+"""
 function addNonSeasonalModels!(
     bestModel::SARIMAModel, 
     candidateModels::Vector{SARIMAModel},
@@ -770,6 +1077,29 @@ function addNonSeasonalModels!(
     end
 end
 
+"""
+    addSeasonalModels!(
+        bestModel::SARIMAModel, 
+        candidateModels::Vector{SARIMAModel},
+        visitedModels::Dict{String,Dict{String,Any}}, 
+        maxP::Int64, 
+        maxQ::Int64, 
+        allowMean::Bool,
+        allowDrift::Bool
+    )
+
+Adds seasonal SARIMA models to the candidate models vector based on the best SARIMA model found.
+
+# Arguments
+- `bestModel::SARIMAModel`: The best SARIMA model found so far.
+- `candidateModels::Vector{SARIMAModel}`: A vector of candidate SARIMA models to add new models to.
+- `visitedModels::Dict{String,Dict{String,Any}}`: A dictionary containing information about visited models.
+- `maxP::Int64`: The maximum autoregressive order for the seasonal part.
+- `maxQ::Int64`: The maximum moving average order for the seasonal part.
+- `allowMean::Bool`: Whether to include a mean term in the model.
+- `allowDrift::Bool`: Whether to include a drift term in the model.
+
+"""
 function addSeasonalModels!(
     bestModel::SARIMAModel, 
     candidateModels::Vector{SARIMAModel},
@@ -805,6 +1135,23 @@ function addSeasonalModels!(
     end
 end
 
+"""
+    addChangedConstantModel!(
+        bestModel::SARIMAModel,
+        candidateModels::Vector{SARIMAModel},
+        visitedModels::Dict{String,Dict{String,Any}},
+        drift::Bool = false
+    )
+
+Adds a SARIMA model with a changed constant term to the candidate models vector based on the best SARIMA model found.
+
+# Arguments
+- `bestModel::SARIMAModel`: The best SARIMA model found so far.
+- `candidateModels::Vector{SARIMAModel}`: A vector of candidate SARIMA models to add new models to.
+- `visitedModels::Dict{String,Dict{String,Any}}`: A dictionary containing information about visited models.
+- `drift::Bool`: Whether to change the drift term. Default is false.
+
+"""
 function addChangedConstantModel!(
     bestModel::SARIMAModel,
     candidateModels::Vector{SARIMAModel},
