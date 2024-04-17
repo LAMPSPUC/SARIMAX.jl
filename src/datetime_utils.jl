@@ -158,7 +158,18 @@ function identifyGranularity(datetimes::Vector{T}) where T
     return (granularity=unitPeriod, frequency=diffBetweenTimestamps, weekdays=weekDaysSeries)
 end
 
+"""
+    merge(timeArrayVector::Vector{TimeArray})
 
+Merge multiple `TimeArray` objects into a single `TimeArray`. The function aligns the time series based on their timestamps, preserving only the common time span.
+
+# Arguments
+- `timeArrayVector::Vector{TimeArray}`: Vector of `TimeArray` objects to be merged.
+
+# Returns
+A `TimeArray` object representing the merged time series.
+
+"""
 function merge(timeArrayVector::Vector{TimeArray})
     if length(timeArrayVector) == 0
         return TimeArray(DateTime[], [])
@@ -192,7 +203,6 @@ function merge(timeArrayVector::Vector{TimeArray})
         valuesTa = values(ta)
         auxiliarDf[!,colname] = valuesTa
     end
-
 
     return TimeArray(auxiliarDf, timestamp=:timestamp)
 end
