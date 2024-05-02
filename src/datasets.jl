@@ -1,4 +1,6 @@
 export AIR_PASSENGERS
+#export GPD
+#export NROU
 
 @enum Datasets begin
     AIR_PASSENGERS=1
@@ -7,6 +9,8 @@ end
 datasetsPaths = [
     joinpath(dirname(@__DIR__()), "datasets", "airpassengers.csv")
 ]
+
+
 
 """
     loadDataset(
@@ -77,7 +81,7 @@ end
 Splits the time series in training and testing sets. 
 """
 function splitTrainTest(data::TimeArray; trainPercentage::Float64=0.8)
-    trainingSetEndIndex = floor(Int64, trainPercentage*length(y))
+    trainingSetEndIndex = floor(Int64, trainPercentage*length(data))
     trainingSet = TimeArray(timestamp(data)[1:trainingSetEndIndex], values(data)[1:trainingSetEndIndex])
     testingSet = TimeArray(timestamp(data)[trainingSetEndIndex+1:end], values(data)[trainingSetEndIndex+1:end])
     return trainingSet, testingSet
