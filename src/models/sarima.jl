@@ -64,7 +64,7 @@ mutable struct SARIMAModel <: SarimaxModel
         if !isnothing(exog)
             @assert yMetadata["startDatetime"] == timestamp(exog)[1] "The endogenous and exogenous variables must start at the same timestamp"
             @assert yMetadata["endDatetime"] <= timestamp(exog)[end] "The exogenous variables must end after the endogenous variables"
-            @assert granularityInfo == identifyGranularity(timestamps(exog)) "The endogenous and exogenous variables must have the same granularity, frequency and pattern"
+            @assert granularityInfo == identifyGranularity(timestamp(exog)) "The endogenous and exogenous variables must have the same granularity, frequency and pattern"
         end
         return new(y,p,d,q,seasonality,P,D,Q,yMetadata,exog,c,trend,ϕ,θ,Φ,Θ,ϵ,exog_coefficients,σ²,fitInSample,forecast,silent,allowMean,allowDrift)
     end
@@ -246,8 +246,6 @@ julia> fit!(model)
 function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, objectiveFunction::String="mse")
     isFitted(model) && @info("The model has already been fitted. Overwriting the previous results")
     @assert objectiveFunction ∈ ["mse","ml","bilevel"] "The objective function $objectiveFunction is not supported. Please use 'mse', 'ml' or 'bilevel'"
-    @assert model.d <= 1 "The estimation only works with d <= 1. Soon this will be fixed"
-    @assert model.D <= 1 "The estimation only works with D <= 1. Soon this will be fixed"
     
     diffY = differentiate(model.y,model.d,model.D, model.seasonality)
     
