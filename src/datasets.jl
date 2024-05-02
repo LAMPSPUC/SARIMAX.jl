@@ -1,13 +1,16 @@
-export AIR_PASSENGERS
-#export GPD
-#export NROU
+export AIR_PASSENGERS, GDPC1, NROU
+
 
 @enum Datasets begin
     AIR_PASSENGERS=1
+    GPDC1=2 
+    NROU=3
 end
 
 datasetsPaths = [
-    joinpath(dirname(@__DIR__()), "datasets", "airpassengers.csv")
+    joinpath(dirname(@__DIR__()), "datasets", "airpassengers.csv"), 
+    joinpath(dirname(@__DIR__()), "datasets", "GDPC1.csv"),
+    joinpath(dirname(@__DIR__()), "datasets", "NROU.csv")
 ]
 
 
