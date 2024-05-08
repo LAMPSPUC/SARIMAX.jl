@@ -395,7 +395,7 @@ function objectiveFunctionDefinition!(model::Model, objectiveFunction::String, T
         @variable(model, μ, start = 0.0)
         @variable(model, σ >= 0.0, start = 1.0)
         @constraint(model,0 <= μ <= 0.0) 
-        @NLobjective( model, Max,((T-lb)/2) * log(1 / (2*π*σ*σ)) - sum((model[:ϵ][t] - μ)^2 for t in lb:T) / (2*σ*σ))
+        @objective( model, Max,((T-lb)/2) * log(1 / (2*π*σ*σ)) - sum((model[:ϵ][t] - μ)^2 for t in lb:T) / (2*σ*σ))
     end
 end
 
