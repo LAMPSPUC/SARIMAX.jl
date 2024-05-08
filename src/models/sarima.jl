@@ -495,8 +495,9 @@ function predict!(
     stepsAhead::Int64 = 1,
     seed::Int = 1234,
     isSimulation::Bool = false
-)
-    forecast_values = predict(model, stepsAhead, seed, isSimulation)
+)   
+    Random.seed!(seed)
+    forecast_values = predict(model, stepsAhead, isSimulation)
     forecastTimestamps::Vector{TimeType} = buildDatetimes(timestamp(model.y)[end], getproperty(Dates, model.metadata["granularity"])(model.metadata["frequency"]), model.metadata["weekDaysOnly"], stepsAhead)
     model.forecast = TimeArray(forecastTimestamps,forecast_values)
 end
@@ -505,8 +506,7 @@ end
 """
     predict(
         model::SARIMAModel, 
-        stepsAhead::Int64 = 1, 
-        seed::Int = 1234, 
+        stepsAhead::Int64 = 1,
         isSimulation::Bool = true
     )
 
@@ -516,7 +516,6 @@ Returns the forecasted values.
 # Arguments
 - `model::SARIMAModel`: The SARIMA model to make predictions.
 - `stepsAhead::Int64`: The number of periods ahead to forecast (default: 1).
-- `seed::Int`: Seed for random number generation when simulating forecasts (default: 1234).
 - `isSimulation::Bool`: Whether to perform a simulation-based forecast (default: true).
 
 # Example
@@ -530,9 +529,8 @@ julia> fit!(model)
 julia> forecastedValues = predict(model, stepsAhead=12)
 ````
 """
-function predict(model::SARIMAModel, stepsAhead::Int64=1, seed::Int=1234, isSimulation::Bool=true)
+function predict(model::SARIMAModel, stepsAhead::Int64=1, isSimulation::Bool=true)
     !isFitted(model) && throw(ModelNotFitted())
-    isSimulation && Random.seed!(seed)
 
     diffY = differentiate(model.y,model.d,model.D,model.seasonality)
     valuesExog = []
@@ -595,7 +593,8 @@ end
     simulate(
         model::SARIMAModel, 
         stepsAhead::Int64 = 1, 
-        numScenarios::Int64 = 200
+        numScenarios::Int64 = 200,
+        seed::Int64 = 1234
     )
 
 Simulates the SARIMA model for the next `stepsAhead` periods assuming that the model's estimated σ².
@@ -605,6 +604,7 @@ Returns a vector of `numScenarios` scenarios of the forecasted values.
 - `model::SARIMAModel`: The SARIMA model to simulate.
 - `stepsAhead::Int64`: The number of periods ahead to simulate. Default is 1.
 - `numScenarios::Int64`: The number of simulation scenarios. Default is 200.
+- `seed::Int64`: The seed of the simulation. Default is 1234.
 
 # Returns
 - `Vector{Vector{Float64}}`: A vector of scenarios, each containing the forecasted values for the next `stepsAhead` periods.
@@ -622,9 +622,11 @@ julia> scenarios = simulate(model, stepsAhead=12, numScenarios=1000)
 """
 function simulate(model::SARIMAModel, stepsAhead::Int64=1, numScenarios::Int64=200, seed::Int64=1234)
     !isFitted(model) && throw(ModelNotFitted())
+    isSimulation && Random.seed!(seed)
+
     scenarios::Vector{Vector{Float64}} = []
     for _=1:numScenarios
-        push!(scenarios, predict(model, stepsAhead, seed, true))
+        push!(scenarios, predict(model, stepsAhead, true))
     end
     return scenarios
 end
