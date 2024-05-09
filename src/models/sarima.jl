@@ -622,7 +622,7 @@ julia> scenarios = simulate(model, stepsAhead=12, numScenarios=1000)
 """
 function simulate(model::SARIMAModel, stepsAhead::Int64=1, numScenarios::Int64=200, seed::Int64=1234)
     !isFitted(model) && throw(ModelNotFitted())
-    isSimulation && Random.seed!(seed)
+    Random.seed!(seed)
 
     scenarios::Vector{Vector{Float64}} = []
     for _=1:numScenarios
