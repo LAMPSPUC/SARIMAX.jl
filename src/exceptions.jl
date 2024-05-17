@@ -11,3 +11,8 @@ Base.showerror(io::IO, e::InconsistentDatePattern) = print(io, "The timestamps d
 
 mutable struct MissingExogenousData <: Exception end
 Base.showerror(io::IO, e::MissingExogenousData) = print(io, "There is no exogenous data to forecast the horizon requested")
+
+mutable struct InvalidParametersCombination <: Exception
+    msg::String
+end
+Base.showerror(io::IO, e::InvalidParametersCombination) = print(io, "The parameters provided are invalid for the model \n". e.msg)

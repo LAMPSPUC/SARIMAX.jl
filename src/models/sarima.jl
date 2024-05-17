@@ -16,13 +16,14 @@ mutable struct SARIMAModel <: SarimaxModel
     Φ::Union{Vector{Float64},Nothing}
     Θ::Union{Vector{Float64},Nothing}
     ϵ::Union{Vector{Float64},Nothing}
-    exog_coefficients::Union{Vector{Float64},Nothing}
+    exogCoefficients::Union{Vector{Float64},Nothing}
     σ²::Float64
     fitInSample::Union{TimeArray,Nothing}
     forecast::Union{TimeArray,Nothing}
     silent::Bool
     allowMean::Bool
     allowDrift::Bool
+    keepProvidedCoefficients::Bool
     function SARIMAModel(
                         y::TimeArray,
                         p::Int64,
@@ -40,13 +41,14 @@ mutable struct SARIMAModel <: SarimaxModel
                         Φ::Union{Vector{Float64},Nothing}=nothing,
                         Θ::Union{Vector{Float64},Nothing}=nothing,
                         ϵ::Union{Vector{Float64},Nothing}=nothing,
-                        exog_coefficients::Union{Vector{Float64},Nothing}=nothing,
+                        exogCoefficients::Union{Vector{Float64},Nothing}=nothing,
                         σ²::Float64=0.0,
                         fitInSample::Union{TimeArray,Nothing}=nothing,
                         forecast::Union{TimeArray,Nothing}=nothing,
                         silent::Bool=true,
                         allowMean::Bool=true,
-                        allowDrift::Bool=false)
+                        allowDrift::Bool=false,
+                        keepProvidedCoefficients::Bool=false)
         @assert p >= 0
         @assert d >= 0
         @assert q >= 0
@@ -66,7 +68,7 @@ mutable struct SARIMAModel <: SarimaxModel
             @assert yMetadata["endDatetime"] <= timestamp(exog)[end] "The exogenous variables must end after the endogenous variables"
             @assert granularityInfo == identifyGranularity(timestamp(exog)) "The endogenous and exogenous variables must have the same granularity, frequency and pattern"
         end
-        return new(y,p,d,q,seasonality,P,D,Q,yMetadata,exog,c,trend,ϕ,θ,Φ,Θ,ϵ,exog_coefficients,σ²,fitInSample,forecast,silent,allowMean,allowDrift)
+        return new(y,p,d,q,seasonality,P,D,Q,yMetadata,exog,c,trend,ϕ,θ,Φ,Θ,ϵ,exogCoefficients,σ²,fitInSample,forecast,silent,allowMean,allowDrift,keepProvidedCoefficients)
     end
 end
 
@@ -79,8 +81,9 @@ function print(model::SARIMAModel)
     model.q != 0          && println("Estimated θ       : ",model.θ)
     model.P != 0          && println("Estimated Φ       : ", model.Φ)
     model.Q != 0          && println("Estimated θ       : ",model.Θ)
-    isnothing(model.exog) || println("Exogenous coefficients: ",model.exog_coefficients)
+    isnothing(model.exog) || println("Exogenous coefficients: ",model.exogCoefficients)
     println("Residuals σ²      : ",model.σ²)
+    model.keepProvidedCoefficients && println("The model preserves the provided coefficients. To optimize the whole model, set keepProvidedCoefficients=false")
 end
 
 function Base.show(io::IO, model::SARIMAModel)
@@ -102,6 +105,50 @@ function SARIMA(y::TimeArray,
                 allowMean::Bool=true,
                 allowDrift::Bool=false)
     return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,silent=silent,allowMean=allowMean,allowDrift=allowDrift)
+end
+
+function SARIMA(y::TimeArray,
+                exog::Union{TimeArray,Nothing},
+                arCoefficients::Union{Vector{Float64},Nothing},
+                maCoefficients::Union{Vector{Float64},Nothing},
+                seasonalARCoefficients::Union{Vector{Float64},Nothing},
+                seasonalMACoefficients::Union{Vector{Float64},Nothing},
+                mean::Union{Float64,Nothing}=nothing,
+                trend::Union{Float64,Nothing}=nothing,
+                exogCoefficients::Union{Vector{Float64},Nothing}=nothing,
+                d::Int64,
+                D::Int64 = 0,
+                seasonality::Int64=1,
+                silent::Bool=true,
+                allowMean::Bool=true,
+                allowDrift::Bool=false)
+
+    if isnothing(arCoefficients) && isnothing(maCoefficients) && isnothing(seasonalARCoefficients) && isnothing(seasonalMACoefficients)
+        throw(InvalidParametersCombination("At least one of the AR, MA, seasonal AR or seasonal MA coefficients must be provided"))
+    end
+
+    if isnothing(seasonalARCoefficients) && isnothing(seasonalMACoefficients) && seasonality == 1
+        throw(InvalidParametersCombination("The seasonality must be provided if seasonal AR and/or MA coefficients are provided"))
+    end
+
+    if isnothing(exog) && !isnothing(exogCoefficients)
+        throw(InvalidParametersCombination("Exogenous coefficients were provided but no exogenous variable was passed"))
+    end
+
+    if length(colnames(exog)) != length(exogCoefficients)
+        throw(InvalidParametersCombination("The number of exogenous coefficients must match the number of exogenous variables"))
+    end
+
+    p = isnothing(arCoefficients) ? 0 : length(arCoefficients)
+    q = isnothing(maCoefficients) ? 0 : length(maCoefficients)
+    P = isnothing(seasonalARCoefficients) ? 0 : length(seasonalARCoefficients)
+    Q = isnothing(seasonalMACoefficients) ? 0 : length(seasonalMACoefficients)
+    c = isnothing(mean) ? nothing : mean
+    trend = isnothing(trend) ? nothing : trend
+    allowMean = !isnothing(mean) || allowMean
+    allowDrift = !isnothing(trend) || allowDrift
+
+    return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,exog=exog,c=c,trend=trend,ϕ=arCoefficients,θ=maCoefficients,Φ=seasonalARCoefficients,Θ=seasonalMACoefficients,exogCoefficients=exogCoefficients,silent=silent,allowMean=allowMean,allowDrift=allowDrift)
 end
 
 function SARIMA(y::TimeArray,
@@ -170,7 +217,7 @@ function fillFitValues!(model::SARIMAModel,
     model.Φ = Φ
     model.Θ = Θ
     model.fitInSample = fitInSample
-    model.exog_coefficients = exogCoefficients
+    model.exogCoefficients = exogCoefficients
 end
 
 """
@@ -193,7 +240,7 @@ function isFitted(model::SARIMAModel)
     estimatedSeasonalAR = (model.P == 0) || !isnothing(model.Φ)
     estimatedSeasonalMA = (model.Q == 0) || !isnothing(model.Θ)
     estimatedIntercept =  !model.allowMean || !isnothing(model.c)
-    estimatedExog = isnothing(model.exog) || !isnothing(model.exog_coefficients)
+    estimatedExog = isnothing(model.exog) || !isnothing(model.exogCoefficients)
     return hasResiduals && hasFitInSample && estimatedAR && estimatedMA && estimatedSeasonalAR && estimatedSeasonalMA && estimatedIntercept && estimatedExog
 end
 
@@ -297,6 +344,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         end
     end
 
+    model.keepProvidedCoefficients && setProvidedCoefficients!(mod, model)
     includeSolverParameters!(mod, silent)
     
     lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
@@ -345,6 +393,38 @@ Determines if the moving average coefficients are treated as model parameters ba
 """
 function MACoefficientsAreModelParameters(objectiveFunction::String)
     return objectiveFunction == "bilevel"
+end
+
+"""
+    setProvidedCoefficients!(jumpModel::Model, model::SARIMAModel)
+
+Sets the provided coefficient values from a `SARIMAModel` to the corresponding parameters in a `jumpModel`.
+
+# Arguments
+- `jumpModel::Model`: The target model where the coefficients will be set.
+- `model::SARIMAModel`: The source model containing the coefficients.
+
+# Description
+This function assigns the provided coefficients from the `model` to the corresponding parameters in the `jumpModel` if they are not `nothing`.
+
+# Details
+- If `model.c` is not `nothing`, it sets `jumpModel[:c]` to `model.c`.
+- If `model.trend` is not `nothing`, it sets `jumpModel[:trend]` to `model.trend`.
+- If `model.ϕ` is not `nothing`, it sets `jumpModel[:ϕ]` to `model.ϕ`.
+- If `model.θ` is not `nothing`, it sets `jumpModel[:θ]` to `model.θ`.
+- If `model.Φ` is not `nothing`, it sets `jumpModel[:Φ]` to `model.Φ`.
+- If `model.Θ` is not `nothing`, it sets `jumpModel[:Θ]` to `model.Θ`.
+- If `model.exogCoefficients` is not `nothing`, it sets `jumpModel[:β]` to `model.exogCoefficients`.
+
+"""
+function setProvidedCoefficients!(jumpModel::Model, model::SARIMAModel)
+    !isnothing(model.c) && set_parameter_value.(jumpModel[:c],model.c)
+    !isnothing(model.trend) && set_parameter_value.(jumpModel[:trend],model.trend)
+    !isnothing(model.ϕ) && set_parameter_value.(jumpModel[:ϕ],model.ϕ)
+    !isnothing(model.θ) && set_parameter_value.(jumpModel[:θ],model.θ)
+    !isnothing(model.Φ) && set_parameter_value.(jumpModel[:Φ],model.Φ)
+    !isnothing(model.Θ) && set_parameter_value.(jumpModel[:Θ],model.Θ)
+    !isnothing(model.exogCoefficients) && set_parameter_value.(jumpModel[:β],model.exogCoefficients)
 end
 
 """
@@ -575,7 +655,7 @@ function predict(model::SARIMAModel, stepsAhead::Int64=1, isSimulation::Bool=tru
             forecastedValue += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q)
         end
         if !isnothing(model.exog)
-            forecastedValue += valuesExog[T+stepsAhead,:]'model.exog_coefficients
+            forecastedValue += valuesExog[T+stepsAhead,:]'model.exogCoefficients
         end
 
         ϵₜ = isSimulation ? rand(Normal(0,sqrt(model.σ²))) : 0

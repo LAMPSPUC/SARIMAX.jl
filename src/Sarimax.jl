@@ -40,6 +40,7 @@ export SARIMAModel
 export ModelNotFitted
 export MissingMethodImplementation
 export InconsistentDatePattern
+export InvalidParametersCombination
 
 # Export enums
 export Datasets
