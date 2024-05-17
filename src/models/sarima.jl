@@ -116,7 +116,7 @@ function SARIMA(y::TimeArray,
                 mean::Union{Float64,Nothing}=nothing,
                 trend::Union{Float64,Nothing}=nothing,
                 exogCoefficients::Union{Vector{Float64},Nothing}=nothing,
-                d::Int64,
+                d::Int64 = 0,
                 D::Int64 = 0,
                 seasonality::Int64=1,
                 silent::Bool=true,
@@ -1086,10 +1086,27 @@ function localSearch!(
                 "criteria" => criteria
             )
 
-            if criteria < localBestCriteria 
-                invertible = !assertInvertibility || StateSpaceModels.assert_invertibility(model.θ)
+            if criteria < localBestCriteria
+                maCoefficients = model.θ
+                if model.Q > 0
+                    maCoefficients = zeros(model.Q*model.seasonality)
+                    maCoefficients[1:model.q] = model.θ
+                    for i in 1:model.Q
+                        maCoefficients[model.seasonality*i] = model.Θ[i]
+                    end
+                end 
+                invertible = !assertInvertibility || StateSpaceModels.assert_invertibility(maCoefficients)
                 invertible || @info("The model $(getId(model)) is not invertible")
-                stationarity = !assertStationarity || StateSpaceModels.assert_stationarity(model.ϕ)
+
+                arCoefficients = model.ϕ
+                if model.P > 0
+                    arCoefficients = zeros(model.P*model.seasonality)
+                    arCoefficients[1:model.p] = model.ϕ
+                    for i in 1:model.P
+                        arCoefficients[model.seasonality*i] = model.Φ[i]
+                    end
+                end
+                stationarity = !assertStationarity || StateSpaceModels.assert_stationarity(arCoefficients)
                 stationarity || @info("The model $(getId(model)) is not stationary")
                 (!invertible || !stationarity) && @info("The model will not be considered")
                 if invertible && stationarity
