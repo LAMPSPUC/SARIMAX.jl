@@ -2,11 +2,13 @@ module Sarimax
 
 import Base: show, print, copy, deepcopy, showerror
 
+using Alpine
 using Combinatorics
 using CSV
 using DataFrames
 using Dates
 using Distributions
+using HiGHS
 using Ipopt
 using JuMP
 using LinearAlgebra

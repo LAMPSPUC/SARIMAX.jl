@@ -262,9 +262,6 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     exogValues = isnothing(model.exog) ? [] : values(diffY)[:,2:end]
 
     mod = Model(optimizer)
-    if silent 
-        set_silent(mod)
-    end
 
     if (model.allowMean)
         @variable(mod,c)
@@ -300,7 +297,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         end
     end
 
-    includeSolverParameters!(mod)
+    includeSolverParameters!(mod, silent)
     
     lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
     fix.(ϵ[1:lb-1],0.0)
@@ -359,9 +356,15 @@ Includes solver-specific parameters in the JuMP model.
 - `model::Model`: The JuMP model to which solver parameters will be included.
 
 """
-function includeSolverParameters!(model::Model)
+function includeSolverParameters!(model::Model, isSilent::Bool=true)
+    isSilent && solver_name(model) != "Alpine" && set_silent(model)
     if solver_name(model) == "Gurobi"
-        set_optimizer_attribute(mod, "NonConvex", 2)
+        set_optimizer_attribute(model, "NonConvex", 2)
+    elseif solver_name(model) == "Alpine"
+        ipopt = optimizer_with_attributes(Ipopt.Optimizer)
+        highs = optimizer_with_attributes(HiGHS.Optimizer)
+        set_optimizer_attribute(model, "nlp_solver", ipopt)
+        set_optimizer_attribute(model, "mip_solver", highs)
     end
 end
     
@@ -384,9 +387,9 @@ Defines the objective function for optimization in the SARIMA model.
 """
 function objectiveFunctionDefinition!(model::Model, objectiveFunction::String, T::Int, lb::Int)
     if objectiveFunction == "mse"
-        @objective(model, Min, mean(model[:ϵ].^2))
+        @objective(model, Min, mean(model[:ϵ][lb:T].^2))
     elseif objectiveFunction == "bilevel"
-        @objective(model, Min, mean(model[:ϵ].^2))
+        @objective(model, Min, mean(model[:ϵ][lb:T].^2))
         set_time_limit_sec(model, 1.0)
     elseif objectiveFunction == "ml"
         # llk(ϵ,μ,σ) = logpdf(Normal(μ,abs(σ)),ϵ)
