@@ -15,4 +15,4 @@ Base.showerror(io::IO, e::MissingExogenousData) = print(io, "There is no exogeno
 mutable struct InvalidParametersCombination <: Exception
     msg::String
 end
-Base.showerror(io::IO, e::InvalidParametersCombination) = print(io, "The parameters provided are invalid for the model \n". e.msg)
+Base.showerror(io::IO, e::InvalidParametersCombination) = print(io, "The parameters provided are invalid for the model \n", e.msg)

@@ -68,6 +68,7 @@ export aic
 export aicc
 export bic
 export buildDatetimes
+export toMA
 export differentiatedCoefficients
 
 

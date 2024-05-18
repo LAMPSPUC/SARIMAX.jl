@@ -107,12 +107,12 @@ function SARIMA(y::TimeArray,
     return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,silent=silent,allowMean=allowMean,allowDrift=allowDrift)
 end
 
-function SARIMA(y::TimeArray,
-                exog::Union{TimeArray,Nothing},
-                arCoefficients::Union{Vector{Float64},Nothing},
-                maCoefficients::Union{Vector{Float64},Nothing},
-                seasonalARCoefficients::Union{Vector{Float64},Nothing},
-                seasonalMACoefficients::Union{Vector{Float64},Nothing},
+function SARIMA(y::TimeArray;
+                exog::Union{TimeArray,Nothing}=nothing,
+                arCoefficients::Union{Vector{Float64},Nothing}=nothing,
+                maCoefficients::Union{Vector{Float64},Nothing}=nothing,
+                seasonalARCoefficients::Union{Vector{Float64},Nothing}=nothing,
+                seasonalMACoefficients::Union{Vector{Float64},Nothing}=nothing,
                 mean::Union{Float64,Nothing}=nothing,
                 trend::Union{Float64,Nothing}=nothing,
                 exogCoefficients::Union{Vector{Float64},Nothing}=nothing,
@@ -127,7 +127,7 @@ function SARIMA(y::TimeArray,
         throw(InvalidParametersCombination("At least one of the AR, MA, seasonal AR or seasonal MA coefficients must be provided"))
     end
 
-    if isnothing(seasonalARCoefficients) && isnothing(seasonalMACoefficients) && seasonality == 1
+    if (!isnothing(seasonalARCoefficients) || !isnothing(seasonalMACoefficients)) && seasonality == 1
         throw(InvalidParametersCombination("The seasonality must be provided if seasonal AR and/or MA coefficients are provided"))
     end
 
@@ -135,7 +135,7 @@ function SARIMA(y::TimeArray,
         throw(InvalidParametersCombination("Exogenous coefficients were provided but no exogenous variable was passed"))
     end
 
-    if length(colnames(exog)) != length(exogCoefficients)
+    if !isnothing(exog) && islength(colnames(exog)) != length(exogCoefficients)
         throw(InvalidParametersCombination("The number of exogenous coefficients must match the number of exogenous variables"))
     end
 
@@ -547,11 +547,106 @@ function computeSARIMAModelVariance(model::Model, lb::Int, objectiveFunction::St
 end
 
 """
+    completeCoefficientsVector(model::SARIMAModel)
+
+Complete the coefficient vectors for AR and MA parts of a SARIMA model.
+
+# Arguments
+- `model::SARIMAModel`: The SARIMA model containing the AR and MA coefficients, seasonal orders, and other model parameters.
+
+# Returns
+- `arCoefficients`: A vector of AR coefficients, extended to include seasonal AR coefficients.
+- `maCoefficients`: A vector of MA coefficients, extended to include seasonal MA coefficients.
+
+The function handles the seasonal components by zero-padding the coefficient vectors and placing the seasonal coefficients at the appropriate positions.
+"""
+function completeCoefficientsVector(model::SARIMAModel)
+    maCoefficients = model.θ
+    if model.Q > 0
+        maCoefficients = zeros(model.Q * model.seasonality)
+        maCoefficients[1:model.q] = model.θ
+        for i in 1:model.Q
+            maCoefficients[model.seasonality * i] = model.Θ[i]
+        end
+    end 
+
+    arCoefficients = model.ϕ
+    if model.P > 0
+        arCoefficients = zeros(model.P * model.seasonality)
+        arCoefficients[1:model.p] = model.ϕ
+        for i in 1:model.P
+            arCoefficients[model.seasonality * i] = model.Φ[i]
+        end
+    end
+
+    return arCoefficients, maCoefficients
+end
+
+"""
+    toMA(model::SARIMAModel, maxLags::Int64=12)
+
+    Convert a SARIMA model to a Moving Average (MA) model.
+
+    # Arguments
+    - `model::SARIMAModel`: The SARIMA model to convert.
+    - `maxLags::Int64=12`: The maximum number of lags to include in the MA model.
+
+    # Returns
+    - `MAmodel::MAModel`: The coefficients of the lagged errors in the MA model.
+
+    # References
+    - Brockwell, P. J., & Davis, R. A. Time Series: Theory and Methods (page 92). Springer(2009)
+"""
+function toMA(model::SARIMAModel, maxLags::Int64=12)
+    arCoefficients, maCoefficients = completeCoefficientsVector(model)
+    p = isnothing(arCoefficients) ? 0 : length(arCoefficients)
+    q = isnothing(maCoefficients) ? 0 : length(maCoefficients)
+    ψ = zeros(maxLags)
+
+    for i in 1:maxLags
+        tmp = (i <= q) ? maCoefficients[i] : 0.0
+        for j in 1:min(i, p)
+            tmp += arCoefficients[j] * ((i-j > 0) ? ψ[i-j] : 1.0)
+        end
+        ψ[i] = tmp
+    end
+    return ψ 
+end
+
+
+"""
+    forecastErrors(model::SARIMAModel, maxLags::Int64=12)
+
+    The function computes the forecast errors for the SARIMA model using the estimated σ² and the MA coefficients.
+    
+    # Arguments
+    - `model::SARIMAModel`: The SARIMA model.
+    - `maxLags::Int64=12`: The maximum number of lags to include in the forecast errors.
+
+    # Returns
+    - `computedForecastErrors::Vector{Float64}`: The computed forecast errors.
+
+    # References
+    - Brockwell, P. J., & Davis, R. A. Time Series: Theory and Methods (page 92). Springer(2009) 
+"""
+function forecastErrors(model::SARIMAModel, maxLags::Int64=12)
+    ψ = toMA(model, maxLags)
+    computedForecastErrors = zeros(maxLags)
+    computedForecastErrors[1] = model.σ²
+    for lag=2:maxLags
+        computedForecastErrors[lag] = model.σ² * (1 + sum(ψ[i]^2 for i=1:lag-1))
+    end
+    return computedForecastErrors
+end
+
+"""
     predict!(
-        model::SARIMAModel,
-        stepsAhead::Int64 = 1,
+        model::SARIMAModel;
+        stepsAhead::Int64 = 1
         seed::Int = 1234,
-        isSimulation::Bool = false
+        isSimulation::Bool = false,
+        displayConfidenceIntervals::Bool = false,
+        confidenceLevel::Float64 = 0.95
     )
 
 Predicts the SARIMA model for the next `stepsAhead` periods.
@@ -562,6 +657,8 @@ The resulting forecast is stored within the model in the `forecast` field.
 - `stepsAhead::Int64`: The number of periods ahead to forecast (default: 1).
 - `seed::Int`: Seed for random number generation when simulating forecasts (default: 1234).
 - `isSimulation::Bool`: Whether to perform a simulation-based forecast (default: false).
+- `displayConfidenceIntervals::Bool`: Whether to display confidence intervals (default: false).
+- `confidenceLevel::Float64`: The confidence level for the confidence intervals (default: 0.95).
 
 # Example
 ```julia
@@ -574,15 +671,27 @@ julia> fit!(model)
 julia> predict!(model; stepsAhead=12)
 """
 function predict!(
-    model::SARIMAModel,
+    model::SARIMAModel;
     stepsAhead::Int64 = 1,
     seed::Int = 1234,
-    isSimulation::Bool = false
+    isSimulation::Bool = false,
+    displayConfidenceIntervals::Bool = false,
+    confidenceLevel::Float64 = 0.95
 )   
     Random.seed!(seed)
-    forecast_values = predict(model, stepsAhead, isSimulation)
+    forecastValues = predict(model, stepsAhead, isSimulation)
     forecastTimestamps::Vector{TimeType} = buildDatetimes(timestamp(model.y)[end], getproperty(Dates, model.metadata["granularity"])(model.metadata["frequency"]), model.metadata["weekDaysOnly"], stepsAhead)
-    model.forecast = TimeArray(forecastTimestamps,forecast_values)
+    if displayConfidenceIntervals
+        α = 1 - confidenceLevel
+        computedForecastErrors = forecastErrors(model, stepsAhead)
+        zValue = quantile(Normal(0,1), 1 - α/2)
+        lowerConfidenceInterval = [forecastValues[i] - zValue*sqrt(computedForecastErrors[i]) for i=1:stepsAhead]
+        upperConfidenceInterval = [forecastValues[i] + zValue*sqrt(computedForecastErrors[i]) for i=1:stepsAhead]
+        data = (datetime = forecastTimestamps, forecast = forecastValues, lower = lowerConfidenceInterval, upper = upperConfidenceInterval)
+        model.forecast = TimeArray(data; timestamp=:datetime)
+    else
+        model.forecast = TimeArray(forecastTimestamps,forecastValues,["forecast"]) 
+    end  
 end
 
 
@@ -1087,27 +1196,14 @@ function localSearch!(
             )
 
             if criteria < localBestCriteria
-                maCoefficients = model.θ
-                if model.Q > 0
-                    maCoefficients = zeros(model.Q*model.seasonality)
-                    maCoefficients[1:model.q] = model.θ
-                    for i in 1:model.Q
-                        maCoefficients[model.seasonality*i] = model.Θ[i]
-                    end
-                end 
+                arCoefficients, maCoefficients = completeCoefficientsVector(model)
+
                 invertible = !assertInvertibility || StateSpaceModels.assert_invertibility(maCoefficients)
                 invertible || @info("The model $(getId(model)) is not invertible")
 
-                arCoefficients = model.ϕ
-                if model.P > 0
-                    arCoefficients = zeros(model.P*model.seasonality)
-                    arCoefficients[1:model.p] = model.ϕ
-                    for i in 1:model.P
-                        arCoefficients[model.seasonality*i] = model.Φ[i]
-                    end
-                end
                 stationarity = !assertStationarity || StateSpaceModels.assert_stationarity(arCoefficients)
                 stationarity || @info("The model $(getId(model)) is not stationary")
+
                 (!invertible || !stationarity) && @info("The model will not be considered")
                 if invertible && stationarity
                     localBestCriteria = criteria
@@ -1154,7 +1250,7 @@ function addNonSeasonalModels!(
     for p in -1:1, q in -1:1
         newp = bestModel.p + p
         newq = bestModel.q + q
-        if newp < 0 || newq < 0 || newp > maxp || newq > maxq
+        if newp < 0 || newq < 0 || newp > maxp || newq > maxq || newp + newq == 0 || newp + newq > 3
             continue
         end
 
@@ -1212,7 +1308,7 @@ function addSeasonalModels!(
     for P in -1:1, Q in -1:1
         newP = bestModel.P + P
         newQ = bestModel.Q + Q
-        if newP < 0 || newQ < 0 || newP > maxP || newQ > maxQ
+        if newP < 0 || newQ < 0 || newP > maxP || newQ > maxQ || newP + newQ == 0 || newP + newQ > 2
             continue
         end
 
