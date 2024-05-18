@@ -18,3 +18,26 @@
     @test autoModelML.D == 1 # Output of forecast package in R
 
 end
+
+@testset "ARMA to MA" begin
+    airPassengers = loadDataset(AIR_PASSENGERS)
+    airPassengersLog = log.(airPassengers)
+    
+    firstModel = SARIMA(airPassengersLog; arCoefficients=[-0.2, 0.0, 0.5])
+    firstCoefficients = toMA(firstModel, 5)
+    @test firstCoefficients ≈ [-0.2, 0.04, 0.492, -0.1984, 0.05968] atol=1e-3
+
+    secondModel = SARIMA(airPassengersLog; arCoefficients=[0.2, -0.1], maCoefficients=[0.5])
+    secondCoefficients = toMA(secondModel, 5)
+    @test secondCoefficients ≈ [0.7, 0.0399999, -0.062, -0.0164, 0.00292] atol=1e-3
+
+    thirdModel = SARIMA(airPassengersLog; arCoefficients=[0.2, -0.1], maCoefficients=[0.5], seasonalARCoefficients=[0.1], seasonality=12)
+    thirdCoefficients = toMA(thirdModel, 15)
+    data = [
+        7.000000e-01, 4.000000e-02, -6.200000e-02, -1.640000e-02, 2.920000e-03, 2.224000e-03, 1.528000e-04,
+        -1.918400e-04, -5.364800e-05, 8.454400e-06, 7.055680e-06, 1.000006e-01, 8.999941e-02, 1.199982e-02,
+        -1.279998e-02
+    ]
+
+    @test thirdCoefficients ≈ data atol=1e-3
+end
