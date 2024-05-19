@@ -148,7 +148,7 @@ function SARIMA(y::TimeArray;
     allowMean = !isnothing(mean) || allowMean
     allowDrift = !isnothing(trend) || allowDrift
 
-    return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,exog=exog,c=c,trend=trend,ϕ=arCoefficients,θ=maCoefficients,Φ=seasonalARCoefficients,Θ=seasonalMACoefficients,exogCoefficients=exogCoefficients,silent=silent,allowMean=allowMean,allowDrift=allowDrift)
+    return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,exog=exog,c=c,trend=trend,ϕ=arCoefficients,θ=maCoefficients,Φ=seasonalARCoefficients,Θ=seasonalMACoefficients,exogCoefficients=exogCoefficients,silent=silent,allowMean=allowMean,allowDrift=allowDrift,keepProvidedCoefficients=true)
 end
 
 function SARIMA(y::TimeArray,
@@ -418,13 +418,13 @@ This function assigns the provided coefficients from the `model` to the correspo
 
 """
 function setProvidedCoefficients!(jumpModel::Model, model::SARIMAModel)
-    !isnothing(model.c) && set_parameter_value.(jumpModel[:c],model.c)
-    !isnothing(model.trend) && set_parameter_value.(jumpModel[:trend],model.trend)
-    !isnothing(model.ϕ) && set_parameter_value.(jumpModel[:ϕ],model.ϕ)
-    !isnothing(model.θ) && set_parameter_value.(jumpModel[:θ],model.θ)
-    !isnothing(model.Φ) && set_parameter_value.(jumpModel[:Φ],model.Φ)
-    !isnothing(model.Θ) && set_parameter_value.(jumpModel[:Θ],model.Θ)
-    !isnothing(model.exogCoefficients) && set_parameter_value.(jumpModel[:β],model.exogCoefficients)
+    !isnothing(model.c) && fix(jumpModel[:c],model.c)
+    !isnothing(model.trend) && fix(jumpModel[:trend],model.trend)
+    !isnothing(model.ϕ) && fix.(jumpModel[:ϕ],model.ϕ; force=true)
+    !isnothing(model.θ) && fix.(jumpModel[:θ],model.θ; force=true)
+    !isnothing(model.Φ) && fix.(jumpModel[:Φ],model.Φ; force=true)
+    !isnothing(model.Θ) && fix.(jumpModel[:Θ],model.Θ; force=true)
+    !isnothing(model.exogCoefficients) && fix.(jumpModel[:β],model.exogCoefficients; force=true)
 end
 
 """
