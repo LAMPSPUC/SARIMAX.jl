@@ -127,6 +127,8 @@ $RECYCLE.BIN/
 # Visual Studio Code
 .vscode/*
 
+
+*opt_sarima.jl
 /test/dissertation/
 */test/dissertation/*
 /models/opt_sarima.jl
