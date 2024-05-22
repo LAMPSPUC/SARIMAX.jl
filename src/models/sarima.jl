@@ -894,7 +894,7 @@ function auto(
     objectiveFunction::String = "mse",
     assertStationarity::Bool = false,
     assertInvertibility::Bool = false,
-    silent::Bool = false
+    silent::Bool = true
 )
     # Parameter validation
     @assert seasonality >= 1 "seasonality must be greater than 1. Use 1 for non-seasonal models"
@@ -942,7 +942,7 @@ function auto(
     end
 
     # Fit models
-    bestCriteria, bestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility)
+    bestCriteria, bestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility,silent)
     
     ITERATION_LIMIT = 100
     iterations = 1
@@ -953,7 +953,7 @@ function auto(
         (d+D == 0) && addChangedConstantModel!(bestModel, candidateModels, visitedModels)
         (d+D == 1) && addChangedConstantModel!(bestModel, candidateModels, visitedModels,true)
 
-        itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility)
+        itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility, silent)
         
         (itBestCriteria > bestCriteria) && break
         bestCriteria = itBestCriteria
@@ -1153,7 +1153,7 @@ end
         objectiveFunction::String = "mse",
         assertStationarity::Bool = false,
         assertInvertibility::Bool = false,
-        silent::Bool = false
+        silent::Bool = true
     )
 
 Performs a local search to find the best SARIMA model among the candidate models.
@@ -1188,7 +1188,7 @@ function localSearch!(
     objectiveFunction::String = "mse",
     assertStationarity::Bool = false,
     assertInvertibility::Bool = false,
-    silent::Bool = false
+    silent::Bool = true
 )   
     localBestCriteria = Inf
     localBestModel = nothing
@@ -1208,7 +1208,7 @@ function localSearch!(
                 silent && (invertible || @info("The model $(getId(model)) is not invertible"))
 
                 stationarity = !assertStationarity || StateSpaceModels.assert_stationarity(arCoefficients)
-                silence && (stationarity || @info("The model $(getId(model)) is not stationary"))
+                silent && (stationarity || @info("The model $(getId(model)) is not stationary"))
 
                 silent && (!invertible || !stationarity) && @info("The model will not be considered")
                 if invertible && stationarity
