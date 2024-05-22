@@ -843,7 +843,8 @@ end
         seasonalIntegrationTest::String = "seas",
         objectiveFunction::String = "mse",
         assertStationarity::Bool = false,
-        assertInvertibility::Bool = false
+        assertInvertibility::Bool = false,
+        silent::Bool = false
     )
 
 Automatically fits the best SARIMA model according to the specified parameters.
@@ -868,6 +869,7 @@ Automatically fits the best SARIMA model according to the specified parameters.
 - `objectiveFunction::String`: The objective function to be used for model selection. Options are "mse", "ml", or "bilevel". Default is "mse".
 - `assertStationarity::Bool`: Whether to assert stationarity of the fitted model. Default is false.
 - `assertInvertibility::Bool`: Whether to assert invertibility of the fitted model. Default is false.
+- `silent::Bool`: Whether to suppress output. Default is false.
 
 # References
 - Hyndman, RJ and Khandakar. "Automatic time series forecasting: The forecast package for R." Journal of Statistical Software, 26(3), 2008.
@@ -891,7 +893,8 @@ function auto(
     seasonalIntegrationTest::String = "seas",
     objectiveFunction::String = "mse",
     assertStationarity::Bool = false,
-    assertInvertibility::Bool = false
+    assertInvertibility::Bool = false,
+    silent::Bool = false
 )
     # Parameter validation
     @assert seasonality >= 1 "seasonality must be greater than 1. Use 1 for non-seasonal models"
@@ -958,7 +961,7 @@ function auto(
 
         iterations += 1
     end
-    @info("The best model found is $(getId(bestModel)) with $(iterations) iterations")
+    silent && @info("The best model found is $(getId(bestModel)) with $(iterations) iterations")
 
     return bestModel
 end
@@ -1149,7 +1152,8 @@ end
         informationCriteriaFunction::Function,
         objectiveFunction::String = "mse",
         assertStationarity::Bool = false,
-        assertInvertibility::Bool = false
+        assertInvertibility::Bool = false,
+        silent::Bool = false
     )
 
 Performs a local search to find the best SARIMA model among the candidate models.
@@ -1161,6 +1165,7 @@ Performs a local search to find the best SARIMA model among the candidate models
 - `objectiveFunction::String`: The objective function to be used for fitting models. Default is "mse".
 - `assertStationarity::Bool`: Whether to assert stationarity of the fitted models. Default is false.
 - `assertInvertibility::Bool`: Whether to assert invertibility of the fitted models. Default is false.
+- `silent::Bool`: Whether to suppress output. Default is false.
 
 # Returns
 - `Tuple{Float64, Union{SARIMAModel, Nothing}}`: A tuple containing the best criteria value and the corresponding best model found.
@@ -1182,7 +1187,8 @@ function localSearch!(
     informationCriteriaFunction::Function,
     objectiveFunction::String = "mse",
     assertStationarity::Bool = false,
-    assertInvertibility::Bool = false
+    assertInvertibility::Bool = false,
+    silent::Bool = false
 )   
     localBestCriteria = Inf
     localBestModel = nothing
@@ -1190,7 +1196,7 @@ function localSearch!(
         if !isFitted(model) 
             fit!(model;objectiveFunction=objectiveFunction)
             criteria = informationCriteriaFunction(model)
-            @info("Fitted $(getId(model)) with $(criteria)")
+            silent && @info("Fitted $(getId(model)) with $(criteria)")
             visitedModels[getId(model)] = Dict(
                 "criteria" => criteria
             )
@@ -1199,12 +1205,12 @@ function localSearch!(
                 arCoefficients, maCoefficients = completeCoefficientsVector(model)
 
                 invertible = !assertInvertibility || StateSpaceModels.assert_invertibility(maCoefficients)
-                invertible || @info("The model $(getId(model)) is not invertible")
+                silent && (invertible || @info("The model $(getId(model)) is not invertible"))
 
                 stationarity = !assertStationarity || StateSpaceModels.assert_stationarity(arCoefficients)
-                stationarity || @info("The model $(getId(model)) is not stationary")
+                silence && (stationarity || @info("The model $(getId(model)) is not stationary"))
 
-                (!invertible || !stationarity) && @info("The model will not be considered")
+                silent && (!invertible || !stationarity) && @info("The model will not be considered")
                 if invertible && stationarity
                     localBestCriteria = criteria
                     localBestModel = model
