@@ -1,9 +1,5 @@
-BASE_PATH = joinpath(dirname(@__DIR__()),"Sarimax")
-
-include(joinpath(BASE_PATH,"src/Sarimax.jl"))
-using .Sarimax
-
 using Dates
+using Sarimax
 using Statistics
 using Test
 
