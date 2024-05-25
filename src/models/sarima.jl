@@ -84,6 +84,7 @@ function print(model::SARIMAModel)
     isnothing(model.exog) || println("Exogenous coefficients: ",model.exogCoefficients)
     println("Residuals σ²      : ",model.σ²)
     model.keepProvidedCoefficients && println("The model preserves the provided coefficients. To optimize the whole model, set keepProvidedCoefficients=false")
+    println("======================================")
 end
 
 function Base.show(io::IO, model::SARIMAModel)
