@@ -28,12 +28,13 @@ julia> stationaryAirPassengers = differentiate(airPassengers, d=1, D=1, s=12)
 ```
 """
 function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
-    series = TimeArray(timestamp(series),values(series), colnames(series))
+    copiedValues::Vector{Float64} = values(series)
+    series = TimeArray(timestamp(series), copiedValues, colnames(series))
     seriesName = colnames(series)[1]
     if D > 0
         # @info("Seasonal difference")
-        diffValues = []
-        originalValues = values(series)
+        diffValues::Vector{Float64} = []
+        originalValues::Vector{Float64} = values(series)
         T = length(originalValues)
         for i=1:D
             # Δyₜ = yₜ - y_t-s
