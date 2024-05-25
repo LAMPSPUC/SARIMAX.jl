@@ -837,8 +837,8 @@ end
         maxD::Int64 = 1,
         maxQ::Int64 = 2,
         informationCriteria::String = "aicc",
-        allowMean::Bool = true,
-        allowDrift::Bool = true,
+        allowMean::Bool = false,
+        allowDrift::Bool = false,
         integrationTest::String = "kpss",
         seasonalIntegrationTest::String = "seas",
         objectiveFunction::String = "mse",
@@ -862,8 +862,8 @@ Automatically fits the best SARIMA model according to the specified parameters.
 - `maxD::Int64`: The maximum integration order for the seasonal part. Default is 1.
 - `maxQ::Int64`: The maximum moving average order for the seasonal part. Default is 2.
 - `informationCriteria::String`: The information criteria to be used for model selection. Options are "aic", "aicc", or "bic". Default is "aicc".
-- `allowMean::Bool`: Whether to include a mean term in the model. Default is true.
-- `allowDrift::Bool`: Whether to include a drift term in the model. Default is true.
+- `allowMean::Bool`: Whether to include a mean term in the model. Default is false.
+- `allowDrift::Bool`: Whether to include a drift term in the model. Default is false.
 - `integrationTest::String`: The integration test to be used for determining the non-seasonal integration order. Default is "kpss".
 - `seasonalIntegrationTest::String`: The integration test to be used for determining the seasonal integration order. Default is "seas".
 - `objectiveFunction::String`: The objective function to be used for model selection. Options are "mse", "ml", or "bilevel". Default is "mse".
@@ -887,8 +887,8 @@ function auto(
     maxD::Int64 = 1,
     maxQ::Int64 = 2,
     informationCriteria::String = "aicc",
-    allowMean::Bool = true,
-    allowDrift::Bool = true,
+    allowMean::Bool = false,
+    allowDrift::Bool = false,
     integrationTest::String = "kpss",
     seasonalIntegrationTest::String = "seas",
     objectiveFunction::String = "mse",
@@ -928,8 +928,8 @@ function auto(
         d = selectIntegrationOrder(deepcopy(values(y)), maxd, D, seasonality, integrationTest)
     end
 
-    allowMean = allowMean && (d+D == 0)
-    allowDrift = allowDrift && (d+D == 1)
+    allowMean = allowMean ? allowMean : (d+D == 0)
+    allowDrift = allowDrift ? allowDrift : (d+D >= 1)
 
     # Include initial models
     candidateModels = Vector{SARIMAModel}()
