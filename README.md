@@ -1,14 +1,14 @@
 [build-img]: https://github.com/LAMPSPUC/SARIMAX.jl/actions/workflows/ci.yml/badge.svg?branch=master
 [build-url]: https://github.com/LAMPSPUC/SARIMAX.jl/actions/workflows/ci.yml
 
-[codecov-img]: https://app.codecov.io/github/LAMPSPUC/SARIMAX.jl/coverage.svg?branch=master
-[codecov-url]: https://app.codecov.io/github/LAMPSPUC/SARIMAX.jl?branch=master
+[codecov-img]: https://codecov.io/github/LAMPSPUC/SARIMAX.jl/graph/badge.svg?token=6Zhd8Jiub3
+[codecov-url]: https://codecov.io/github/LAMPSPUC/SARIMAX.jl
 
 # Sarimax.jl
 
 | **Build Status** | **Coverage** |
-|:-----------------:|:-----------------:|:-----------------:|
-| [![Build Status][build-img]][build-url] | [![Codecov branch][codecov-img]][codecov-url] |
+|:-----------------:|:-----------------:|
+| [![Build Status][build-img]][build-url] | [![codecov]][codecov-img] [codecov-url]|
 
 Introducing Sarimax.jl, a groundbreaking Julia package that redefines SARIMA (Seasonal Autoregressive Integrated Moving Average) modeling by seamlessly integrating the JuMP framework — a powerful optimization modeling language. Unlike traditional SARIMA methods, Sarimax.jl leverages the optimization capabilities of JuMP, allowing for precise and customizable SARIMA models.
 
