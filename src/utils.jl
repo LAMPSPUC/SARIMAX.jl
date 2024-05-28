@@ -28,13 +28,14 @@ julia> stationaryAirPassengers = differentiate(airPassengers, d=1, D=1, s=12)
 ```
 """
 function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
-    copiedValues::Vector{Float64} = values(series)
+    Fl = eltype(values(series))
+    copiedValues::Vector{Fl} = values(series)
     series = TimeArray(timestamp(series), copiedValues, colnames(series))
     seriesName = colnames(series)[1]
     if D > 0
         # @info("Seasonal difference")
-        diffValues::Vector{Float64} = []
-        originalValues::Vector{Float64} = values(series)
+        diffValues::Vector{Fl} = []
+        originalValues::Vector{Fl} = values(series)
         T = length(originalValues)
         for i=1:D
             # Δyₜ = yₜ - y_t-s
@@ -60,7 +61,7 @@ function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
 end
 
 """
-    differentiatedCoefficients(d::Int, D::Int, s::Int)
+    differentiatedCoefficients(d::Int, D::Int, s::Int, Fl::DataType=Float64)
 
 Compute the coefficients for differentiating a time series.
 
@@ -68,17 +69,16 @@ Compute the coefficients for differentiating a time series.
 - `d::Int`: Order of non-seasonal differencing.
 - `D::Int`: Order of seasonal differencing.
 - `s::Int`: Seasonal period.
+- `Fl`: The type of the coefficients. Default is `Float64`.
 
 # Returns
-- `coeffs::Vector{Float64}`: Coefficients for differentiation.
+- `coeffs::Vector{AbstractFloat}`: Coefficients for differentiation.
 """
-function differentiatedCoefficients(d::Int, D::Int, s::Int)
+function differentiatedCoefficients(d::Int, D::Int, s::Int, Fl::DataType=Float64)
     # Calculate the length of the resulting coefficients array
     lenCoeffs = d + D * s + 1
-
     # Initialize an array to store the coefficients
-    coeffs = zeros(Float64, lenCoeffs)
-
+    coeffs = zeros(Fl, lenCoeffs)
     # Calculate the binomial coefficients
     binomialCoeffsd = [binomial(d, i) for i in 0:d]
     binomialCoeffsD = [binomial(D, j) for j in 0:D]
@@ -95,30 +95,30 @@ end
 
 
 """
-    integrate(initialValues::Vector{T}, diffSeries::Vector{T}, d::Int, D::Int, s::Int) where T
+    integrate(initialValues::Vector{Fl}, diffSeries::Vector{Fl}, d::Int, D::Int, s::Int) where Fl<:AbstractFloat
 
 Converts a differentiated time series back to its original scale.
 
 # Arguments
-- `initialValues::Vector{T}`: Initial values of the original time series.
-- `diffSeries::Vector{T}`: Differentiated time series.
+- `initialValues::Vector{Fl}`: Initial values of the original time series.
+- `diffSeries::Vector{Fl}`: Differentiated time series.
 - `d::Int`: Order of non-seasonal differencing.
 - `D::Int`: Order of seasonal differencing.
 - `s::Int`: Seasonal period.
 
 # Returns
-- `origSeries::Vector{Float64}`: Time series in the original scale.
+- `origSeries::Vector{Fl}`: Time series in the original scale.
 """
-function integrate(initialValues::Vector{T}, diffSeries::Vector{T}, d::Int, D::Int, s::Int) where T
+function integrate(initialValues::Vector{Fl}, diffSeries::Vector{Fl}, d::Int, D::Int, s::Int) where Fl<:AbstractFloat
     # Get the coefficients for differentiation
-    coeffs = differentiatedCoefficients(d, D, s)
+    coeffs = differentiatedCoefficients(d, D, s, Fl)
     lenCoeffs = length(coeffs)
     
     # Calculate the length of the original series
     lenSeries = length(diffSeries) + d + D*s
     
     # Initialize an array to store the original series
-    origSeries = zeros(Float64, lenSeries)
+    origSeries = zeros(Fl, lenSeries)
     
     # Copy the initial values to the original series
     origSeries[1:length(initialValues)] .= initialValues
@@ -138,13 +138,13 @@ end
 
 
 """
-    selectSeasonalIntegrationOrder(y, seasonality, test)
+    selectSeasonalIntegrationOrder{Fl}(y, seasonality, test) where Fl<:AbstractFloat
 
 Selects the seasonal integration order for a time series based on the specified test.
 
 # Arguments
-- `y::Vector{Float64}`: The time series data.
-- `seasonality::Int64`: The seasonal period of the time series.
+- `y::Vector{Fl}`: The time series data.
+- `seasonality::Int`: The seasonal period of the time series.
 - `test::String`: The name of the test to use for selecting the seasonal integration order.
 
 # Returns
@@ -155,10 +155,10 @@ Throws an ArgumentError if the specified test is not supported.
 
 """
 function selectSeasonalIntegrationOrder(
-    y::Vector{Float64},
-    seasonality::Int64,
-    test::String
-)
+            y::Vector{Fl},
+            seasonality::Int,
+            test::String
+        ) where Fl<:AbstractFloat
     if test == "seas"
         return StateSpaceModels.seasonal_strength_test(y, seasonality)
     elseif test == "ch"
@@ -169,15 +169,15 @@ function selectSeasonalIntegrationOrder(
 end
 
 """
-    selectIntegrationOrder(y, maxd, D, seasonality, test)
+    selectIntegrationOrder(y, maxd, D, seasonality, test) where Fl<:AbstractFloat
 
 Selects the integration order for a time series based on the specified test.
 
 # Arguments
-- `y::Vector{Float64}`: The time series data.
-- `maxd::Int64`: The maximum order of differencing to consider.
-- `D::Int64`: The maximum seasonal order of differencing to consider.
-- `seasonality::Int64`: The seasonal period of the time series.
+- `y::Vector{Fl}`: The time series data.
+- `maxd::Int`: The maximum order of differencing to consider.
+- `D::Int`: The maximum seasonal order of differencing to consider.
+- `seasonality::Int`: The seasonal period of the time series.
 - `test::String`: The name of the test to use for selecting the integration order.
 
 # Returns
@@ -188,12 +188,12 @@ Throws an ArgumentError if the specified test is not supported.
 
 """
 function selectIntegrationOrder(
-    y::Vector{Float64},
-    maxd::Int64,
-    D::Int64,
-    seasonality::Int64,
-    test::String
-)
+        y::Vector{Fl},
+        maxd::Int,
+        D::Int,
+        seasonality::Int,
+        test::String
+    ) where Fl<:AbstractFloat
     if test == "kpss"
         return StateSpaceModels.repeated_kpss_test(y, maxd, D, seasonality)
     end
