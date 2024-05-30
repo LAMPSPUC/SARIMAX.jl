@@ -20,3 +20,5 @@ include("utils.jl")
 include("exceptions.jl")
 
 include("datasets.jl")
+
+include("fit.jl")
