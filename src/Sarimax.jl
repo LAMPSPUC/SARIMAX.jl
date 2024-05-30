@@ -39,6 +39,7 @@ export SARIMAModel
 # Export Exceptions/Errors
 export ModelNotFitted
 export MissingMethodImplementation
+export MissingExogenousData
 export InconsistentDatePattern
 export InvalidParametersCombination
 

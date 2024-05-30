@@ -14,3 +14,5 @@ include("models/sarima_predict.jl")
 include("datetime_utils.jl")
 
 include("utils.jl")
+
+include("exceptions.jl")
