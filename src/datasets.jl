@@ -7,7 +7,7 @@ end
 const AIR_PASSENGERS = instances(Datasets)[1]
 const GDPC1 = instances(Datasets)[2]
 const NROU = instances(Datasets)[3]
-export AIR_PASSENGERS, GPDC1, NROU
+export AIR_PASSENGERS, GDPC1, NROU
 
 datasetsPaths = [
     joinpath(dirname(@__DIR__()), "datasets", "airpassengers.csv"), 
