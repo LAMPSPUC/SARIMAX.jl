@@ -201,7 +201,7 @@ function merge(timeArrayVector::Vector{TimeArray},modelFl::DataType=Float64)
     for ta in newTimeArrayVector
         # Add a column with ta colname and values
         colname = colnames(ta)[1]
-        valuesTa::modelFl = values(ta)
+        valuesTa::Vector{modelFl} = values(ta)
         auxiliarDf[!,colname] = valuesTa
     end
 
