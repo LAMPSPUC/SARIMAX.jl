@@ -5,6 +5,7 @@ using Sarimax
 using Statistics
 using Test
 using Random
+using TimeSeries
 
 # Testes dos modelos
 include("models/sarima.jl")
