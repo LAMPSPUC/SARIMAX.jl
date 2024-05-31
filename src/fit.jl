@@ -33,60 +33,60 @@ function hasHyperparametersMethods(modelType::Type{<:SarimaxModel})
 end
 
 """
-    aic(K::Int64, loglikeVal::Float64) -> Float64
+    aic(K::Int, loglikeVal::Fl) where Fl<:AbstractFloat -> Fl
 
 Calculate the Akaike Information Criterion (AIC) for a given number of parameters and log-likelihood value.
 
 # Arguments
-- `K::Int64`: Number of parameters in the model.
-- `loglikeVal::Float64`: Log-likelihood value of the model.
+- `K::Int`: Number of parameters in the model.
+- `loglikeVal::Fl`: Log-likelihood value of the model.
 
 # Returns
 The AIC value calculated using the formula: AIC = 2*K - 2*loglikeVal.
 
 """
-function aic(K::Int64, loglikeVal::Float64)
+function aic(K::Int, loglikeVal::Fl) where Fl<:AbstractFloat
     return  2*K - 2*loglikeVal
 end
 
 """
-    aicc(T::Int64, K::Int64, loglikeVal::Float64) -> Float64
+    aicc(T::Int, K::Int, loglikeVal::Fl) where Fl<:AbstractFloat -> Fl
 
 Calculate the corrected Akaike Information Criterion (AICc) for a given number of observations, number of parameters, and log-likelihood value.
 
 # Arguments
-- `T::Int64`: Number of observations in the data.
-- `K::Int64`: Number of parameters in the model.
-- `loglikeVal::Float64`: Log-likelihood value of the model.
+- `T::Int`: Number of observations in the data.
+- `K::Int`: Number of parameters in the model.
+- `loglikeVal::Fl`: Log-likelihood value of the model.
 
 # Returns
 The AICc value calculated using the formula: AICc = AIC(K, loglikeVal) + ((2*K*K + 2*K) / (T - K - 1)).
 
 """
-function aicc(T::Int64, K::Int64, loglikeVal::Float64)
+function aicc(T::Int, K::Int, loglikeVal::Fl) where Fl<:AbstractFloat
     return aic(K, loglikeVal) + ((2*K*K + 2*K) / (T - K - 1))
 end
 
 """
-    bic(T::Int64, K::Int64, loglikeVal::Float64) -> Float64
+    bic(T::Int, K::Int, loglikeVal::Fl) -> Fl
 
 Calculate the Bayesian Information Criterion (BIC) for a given number of observations, number of parameters, and log-likelihood value.
 
 # Arguments
-- `T::Int64`: Number of observations in the data.
-- `K::Int64`: Number of parameters in the model.
-- `loglikeVal::Float64`: Log-likelihood value of the model.
+- `T::Int`: Number of observations in the data.
+- `K::Int`: Number of parameters in the model.
+- `loglikeVal::Fl`: Log-likelihood value of the model.
 
 # Returns
 The BIC value calculated using the formula: BIC = log(T) * K - 2 * loglikeVal.
 
 """
-function bic(T::Int64, K::Int64, loglikeVal::Float64)
+function bic(T::Int, K::Int, loglikeVal::Fl) where Fl<:AbstractFloat
     return log(T)*K - 2*loglikeVal
 end
 
 """
-    aic(model::SarimaxModel) -> Float64
+    aic(model::SarimaxModel) -> Fl
 
 Calculate the Akaike Information Criterion (AIC) for a SARIMAX model.
 
@@ -107,7 +107,7 @@ function aic(model::SarimaxModel)
 end
 
 """
-    aicc(model::SarimaxModel) -> Float64
+    aicc(model::SarimaxModel) -> Fl
 
 Calculate the Corrected Akaike Information Criterion (AICc) for a SARIMAX model.
 
@@ -129,7 +129,7 @@ function aicc(model::SarimaxModel)
 end
 
 """
-    bic(model::SarimaxModel) -> Float64
+    bic(model::SarimaxModel) -> Fl
 
 Calculate the Bayesian Information Criterion (BIC) for a SARIMAX model.
 

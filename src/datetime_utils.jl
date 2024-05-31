@@ -15,7 +15,7 @@ Builds an array of DateTime objects based on a given starting DateTime, granular
 - `startDatetime::T`: The DateTime from which the dateTime array will be computed. It won't be included in the final array
 - `granularity::Dates.Period`: The granularity by which to increment the timestamps.
 - `weekDaysOnly::Bool`: Whether to include only weekdays (Monday to Friday) in the timestamps.
-- `datetimesLength::Int64`: The length of the array of DateTime objects to build.
+- `datetimesLength::Int`: The length of the array of DateTime objects to build.
 
 # Returns
 An array of DateTime objects.
@@ -25,7 +25,7 @@ function buildDatetimes(
     startDatetime::T, 
     granularity::P where P <: Dates.Period,
     weekDaysOnly::Bool, 
-    datetimesLength::Int64,
+    datetimesLength::Int,
 ) where T
     if datetimesLength == 0
         return DateTime[]
@@ -159,18 +159,19 @@ function identifyGranularity(datetimes::Vector{T}) where T
 end
 
 """
-    merge(timeArrayVector::Vector{TimeArray})
+    merge(timeArrayVector::Vector{TimeArray},modelFl::DataType=Float64)
 
 Merge multiple `TimeArray` objects into a single `TimeArray`. The function aligns the time series based on their timestamps, preserving only the common time span.
 
 # Arguments
 - `timeArrayVector::Vector{TimeArray}`: Vector of `TimeArray` objects to be merged.
+- `modelFl::DataType`: The type of the values in the `TimeArray`. Default is `Float64`.
 
 # Returns
 A `TimeArray` object representing the merged time series.
 
 """
-function merge(timeArrayVector::Vector{TimeArray})
+function merge(timeArrayVector::Vector{TimeArray},modelFl::DataType=Float64)
     if length(timeArrayVector) == 0
         return TimeArray(DateTime[], [])
     end
@@ -200,7 +201,7 @@ function merge(timeArrayVector::Vector{TimeArray})
     for ta in newTimeArrayVector
         # Add a column with ta colname and values
         colname = colnames(ta)[1]
-        valuesTa = values(ta)
+        valuesTa::modelFl = values(ta)
         auxiliarDf[!,colname] = valuesTa
     end
 

@@ -1,54 +1,55 @@
-mutable struct SARIMAModel <: SarimaxModel
+mutable struct SARIMAModel{Fl <: AbstractFloat} <: SarimaxModel
     y::TimeArray
-    p::Int64
-    d::Int64
-    q::Int64
-    seasonality::Int64
-    P::Int64
-    D::Int64
-    Q::Int64
+    p::Int
+    d::Int
+    q::Int
+    seasonality::Int
+    P::Int
+    D::Int
+    Q::Int
     metadata::Dict{String,Any}
     exog::Union{TimeArray,Nothing}
-    c::Union{Float64,Nothing}
-    trend::Union{Float64,Nothing}
-    ϕ::Union{Vector{Float64},Nothing}
-    θ::Union{Vector{Float64},Nothing}
-    Φ::Union{Vector{Float64},Nothing}
-    Θ::Union{Vector{Float64},Nothing}
-    ϵ::Union{Vector{Float64},Nothing}
-    exogCoefficients::Union{Vector{Float64},Nothing}
-    σ²::Float64
+    c::Union{Fl,Nothing}
+    trend::Union{Fl,Nothing}
+    ϕ::Union{Vector{Fl},Nothing}
+    θ::Union{Vector{Fl},Nothing}
+    Φ::Union{Vector{Fl},Nothing}
+    Θ::Union{Vector{Fl},Nothing}
+    ϵ::Union{Vector{Fl},Nothing}
+    exogCoefficients::Union{Vector{Fl},Nothing}
+    σ²::Fl
     fitInSample::Union{TimeArray,Nothing}
     forecast::Union{TimeArray,Nothing}
     silent::Bool
     allowMean::Bool
     allowDrift::Bool
     keepProvidedCoefficients::Bool
-    function SARIMAModel(
+    function SARIMAModel{Fl}(
                         y::TimeArray,
-                        p::Int64,
-                        d::Int64,
-                        q::Int64;
-                        seasonality::Int64=1,
-                        P::Int64 = 0,
-                        D::Int64 = 0,
-                        Q::Int64 = 0,
+                        p::Int,
+                        d::Int,
+                        q::Int;
+                        seasonality::Int=1,
+                        P::Int = 0,
+                        D::Int = 0,
+                        Q::Int = 0,
                         exog::Union{TimeArray,Nothing}=nothing,
-                        c::Union{Float64,Nothing}=nothing,
-                        trend::Union{Float64,Nothing}=nothing,
-                        ϕ::Union{Vector{Float64},Nothing}=nothing,
-                        θ::Union{Vector{Float64},Nothing}=nothing,
-                        Φ::Union{Vector{Float64},Nothing}=nothing,
-                        Θ::Union{Vector{Float64},Nothing}=nothing,
-                        ϵ::Union{Vector{Float64},Nothing}=nothing,
-                        exogCoefficients::Union{Vector{Float64},Nothing}=nothing,
-                        σ²::Float64=0.0,
+                        c::Union{Fl,Nothing}=nothing,
+                        trend::Union{Fl,Nothing}=nothing,
+                        ϕ::Union{Vector{Fl},Nothing}=nothing,
+                        θ::Union{Vector{Fl},Nothing}=nothing,
+                        Φ::Union{Vector{Fl},Nothing}=nothing,
+                        Θ::Union{Vector{Fl},Nothing}=nothing,
+                        ϵ::Union{Vector{Fl},Nothing}=nothing,
+                        exogCoefficients::Union{Vector{Fl},Nothing}=nothing,
+                        σ²::Fl=0.0,
                         fitInSample::Union{TimeArray,Nothing}=nothing,
                         forecast::Union{TimeArray,Nothing}=nothing,
                         silent::Bool=true,
                         allowMean::Bool=true,
                         allowDrift::Bool=false,
-                        keepProvidedCoefficients::Bool=false)
+                        keepProvidedCoefficients::Bool=false
+    ) where Fl<:AbstractFloat
         @assert p >= 0
         @assert d >= 0
         @assert q >= 0
@@ -68,9 +69,11 @@ mutable struct SARIMAModel <: SarimaxModel
             @assert yMetadata["endDatetime"] <= timestamp(exog)[end] "The exogenous variables must end after the endogenous variables"
             @assert granularityInfo == identifyGranularity(timestamp(exog)) "The endogenous and exogenous variables must have the same granularity, frequency and pattern"
         end
-        return new(y,p,d,q,seasonality,P,D,Q,yMetadata,exog,c,trend,ϕ,θ,Φ,Θ,ϵ,exogCoefficients,σ²,fitInSample,forecast,silent,allowMean,allowDrift,keepProvidedCoefficients)
+        return new{Fl}(y,p,d,q,seasonality,P,D,Q,yMetadata,exog,c,trend,ϕ,θ,Φ,Θ,ϵ,exogCoefficients,σ²,fitInSample,forecast,silent,allowMean,allowDrift,keepProvidedCoefficients)
     end
 end
+
+typeofModelElements(model::SARIMAModel) = eltype(values(model.y))
 
 function print(model::SARIMAModel)
     println("=================MODEL===============")
@@ -84,6 +87,7 @@ function print(model::SARIMAModel)
     isnothing(model.exog) || println("Exogenous coefficients: ",model.exogCoefficients)
     println("Residuals σ²      : ",model.σ²)
     model.keepProvidedCoefficients && println("The model preserves the provided coefficients. To optimize the whole model, set keepProvidedCoefficients=false")
+    println("======================================")
 end
 
 function Base.show(io::IO, model::SARIMAModel)
@@ -94,34 +98,36 @@ function Base.show(io::IO, model::SARIMAModel)
 end
 
 function SARIMA(y::TimeArray,
-                p::Int64,
-                d::Int64,
-                q::Int64;
-                seasonality::Int64=1,
-                P::Int64 = 0,
-                D::Int64 = 0,
-                Q::Int64 = 0,
+                p::Int,
+                d::Int,
+                q::Int;
+                seasonality::Int=1,
+                P::Int = 0,
+                D::Int = 0,
+                Q::Int = 0,
                 silent::Bool=true,
                 allowMean::Bool=true,
                 allowDrift::Bool=false)
-    return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,silent=silent,allowMean=allowMean,allowDrift=allowDrift)
+        modelFl = eltype(values(y))
+    return SARIMAModel{modelFl}(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,silent=silent,allowMean=allowMean,allowDrift=allowDrift)
 end
 
 function SARIMA(y::TimeArray;
                 exog::Union{TimeArray,Nothing}=nothing,
-                arCoefficients::Union{Vector{Float64},Nothing}=nothing,
-                maCoefficients::Union{Vector{Float64},Nothing}=nothing,
-                seasonalARCoefficients::Union{Vector{Float64},Nothing}=nothing,
-                seasonalMACoefficients::Union{Vector{Float64},Nothing}=nothing,
-                mean::Union{Float64,Nothing}=nothing,
-                trend::Union{Float64,Nothing}=nothing,
-                exogCoefficients::Union{Vector{Float64},Nothing}=nothing,
-                d::Int64 = 0,
-                D::Int64 = 0,
-                seasonality::Int64=1,
+                arCoefficients::Union{Vector{Fl},Nothing}=nothing,
+                maCoefficients::Union{Vector{Fl},Nothing}=nothing,
+                seasonalARCoefficients::Union{Vector{Fl},Nothing}=nothing,
+                seasonalMACoefficients::Union{Vector{Fl},Nothing}=nothing,
+                mean::Union{Fl,Nothing}=nothing,
+                trend::Union{Fl,Nothing}=nothing,
+                exogCoefficients::Union{Vector{Fl},Nothing}=nothing,
+                d::Int = 0,
+                D::Int = 0,
+                seasonality::Int=1,
                 silent::Bool=true,
                 allowMean::Bool=true,
-                allowDrift::Bool=false)
+                allowDrift::Bool=false
+    ) where Fl<:AbstractFloat
 
     if isnothing(arCoefficients) && isnothing(maCoefficients) && isnothing(seasonalARCoefficients) && isnothing(seasonalMACoefficients)
         throw(InvalidParametersCombination("At least one of the AR, MA, seasonal AR or seasonal MA coefficients must be provided"))
@@ -148,66 +154,67 @@ function SARIMA(y::TimeArray;
     allowMean = !isnothing(mean) || allowMean
     allowDrift = !isnothing(trend) || allowDrift
 
-    return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,exog=exog,c=c,trend=trend,ϕ=arCoefficients,θ=maCoefficients,Φ=seasonalARCoefficients,Θ=seasonalMACoefficients,exogCoefficients=exogCoefficients,silent=silent,allowMean=allowMean,allowDrift=allowDrift,keepProvidedCoefficients=true)
+    return SARIMAModel{Fl}(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,exog=exog,c=c,trend=trend,ϕ=arCoefficients,θ=maCoefficients,Φ=seasonalARCoefficients,Θ=seasonalMACoefficients,exogCoefficients=exogCoefficients,silent=silent,allowMean=allowMean,allowDrift=allowDrift,keepProvidedCoefficients=true)
 end
 
 function SARIMA(y::TimeArray,
                 exog::Union{TimeArray,Nothing},
-                p::Int64,
-                d::Int64,
-                q::Int64;
-                seasonality::Int64=1,
-                P::Int64 = 0,
-                D::Int64 = 0,
-                Q::Int64 = 0,
+                p::Int,
+                d::Int,
+                q::Int;
+                seasonality::Int=1,
+                P::Int = 0,
+                D::Int = 0,
+                Q::Int = 0,
                 silent::Bool=true,
                 allowMean::Bool=true,
-                allowDrift::Bool=false)
-    return SARIMAModel(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,exog=exog,silent=silent,allowMean=allowMean,allowDrift=allowDrift)
+                allowDrift::Bool=false) 
+    modelFl = eltype(values(y))
+    return SARIMAModel{modelFl}(y,p,d,q;seasonality=seasonality,P=P,D=D,Q=Q,exog=exog,silent=silent,allowMean=allowMean,allowDrift=allowDrift)
 end
 
 """
     fillFitValues!(
         model::SARIMAModel,
-        c::Float64,
-        trend::Float64,
-        ϕ::Vector{Float64},
-        θ::Vector{Float64},
-        ϵ::Vector{Float64},
-        σ²::Float64,
+        c::Fl,
+        trend::Fl,
+        ϕ::Vector{Fl},
+        θ::Vector{Fl},
+        ϵ::Vector{Fl},
+        σ²::Fl,
         fitInSample::TimeArray;
-        Φ::Union{Vector{Float64}, Nothing}=nothing,
-        Θ::Union{Vector{Float64}, Nothing}=nothing,
-        exogCoefficients::Union{Vector{Float64}, Nothing}=nothing
-    )
+        Φ::Union{Vector{Fl}, Nothing}=nothing,
+        Θ::Union{Vector{Fl}, Nothing}=nothing,
+        exogCoefficients::Union{Vector{Fl}, Nothing}=nothing
+    ) where Fl<:AbstractFloat
 
 Fills the SARIMA model with fitted values.
 
 # Arguments
 - `model::SARIMAModel`: The SARIMA model to be filled.
-- `c::Float64`: The intercept value.
-- `trend::Float64`: The trend value.
-- `ϕ::Vector{Float64}`: The autoregressive coefficients.
-- `θ::Vector{Float64}`: The moving average coefficients.
-- `ϵ::Vector{Float64}`: The residuals.
-- `σ²::Float64`: The model's σ².
+- `c::Fl`: The intercept value.
+- `trend::Fl`: The trend value.
+- `ϕ::Vector{Fl}`: The autoregressive coefficients.
+- `θ::Vector{Fl}`: The moving average coefficients.
+- `ϵ::Vector{Fl}`: The residuals.
+- `σ²::Fl`: The model's σ².
 - `fitInSample::TimeArray`: The fitted values.
-- `Φ::Union{Vector{Float64}, Nothing}`: The seasonal autoregressive coefficients. Default is `nothing`.
-- `Θ::Union{Vector{Float64}, Nothing}`: The seasonal moving average coefficients. Default is `nothing`.
-- `exogCoefficients::Union{Vector{Float64}, Nothing}`: The exogenous variable coefficients. Default is `nothing`.
+- `Φ::Union{Vector{Fl}, Nothing}`: The seasonal autoregressive coefficients. Default is `nothing`.
+- `Θ::Union{Vector{Fl}, Nothing}`: The seasonal moving average coefficients. Default is `nothing`.
+- `exogCoefficients::Union{Vector{Fl}, Nothing}`: The exogenous variable coefficients. Default is `nothing`.
 
 """
 function fillFitValues!(model::SARIMAModel,
-                        c::Float64,
-                        trend::Float64,
-                        ϕ::Vector{Float64},
-                        θ::Vector{Float64},
-                        ϵ::Vector{Float64},
-                        σ²::Float64,
+                        c::Fl,
+                        trend::Fl,
+                        ϕ::Vector{Fl},
+                        θ::Vector{Fl},
+                        ϵ::Vector{Fl},
+                        σ²::Fl,
                         fitInSample::TimeArray;
-                        Φ::Union{Vector{Float64},Nothing}=nothing,
-                        Θ::Union{Vector{Float64},Nothing}=nothing,
-                        exogCoefficients::Union{Vector{Float64},Nothing}=nothing)
+                        Φ::Union{Vector{Fl},Nothing}=nothing,
+                        Θ::Union{Vector{Fl},Nothing}=nothing,
+                        exogCoefficients::Union{Vector{Fl},Nothing}=nothing) where Fl<:AbstractFloat
     model.c = c
     model.trend = trend
     model.ϕ = ϕ
@@ -291,6 +298,7 @@ julia> fit!(model)
 ```
 """
 function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, objectiveFunction::String="mse")
+    Fl = typeofModelElements(model)
     isFitted(model) && @info("The model has already been fitted. Overwriting the previous results")
     @assert objectiveFunction ∈ ["mse","ml","bilevel"] "The objective function $objectiveFunction is not supported. Please use 'mse', 'ml' or 'bilevel'"
     
@@ -361,11 +369,11 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
 
     optimizeModel!(mod, model, objectiveFunction)
     
-    fittedValues::Vector{Float64} = OffsetArrays.no_offset_view(value.(ŷ))
+    fittedValues::Vector{Fl} = OffsetArrays.no_offset_view(value.(ŷ))
     fittedOriginalLengthDifference = length(values(model.y)) - length(fittedValues)
     initialValuesLength = model.d + model.D*model.seasonality
     initialValuesOffset = fittedOriginalLengthDifference > initialValuesLength ? fittedOriginalLengthDifference - initialValuesLength + 1 : 1
-    initialValues::Vector{Float64} = values(model.y)[initialValuesOffset:fittedOriginalLengthDifference]
+    initialValues::Vector{Fl} = values(model.y)[initialValuesOffset:fittedOriginalLengthDifference]
 
     integratedFit = integrate(initialValues, fittedValues, model.d, model.D, model.seasonality)
     lengthIntegratedFit = length(integratedFit)
@@ -535,7 +543,7 @@ Computes the variance of the SARIMA model's errors.
 - `objectiveFunction::String`: The objective function used for fitting the model.
 
 # Returns
-- `Float64`: The computed variance.
+- `AbstractFloat`: The computed variance.
 
 """
 function computeSARIMAModelVariance(model::Model, lb::Int, objectiveFunction::String)
@@ -561,9 +569,10 @@ Complete the coefficient vectors for AR and MA parts of a SARIMA model.
 The function handles the seasonal components by zero-padding the coefficient vectors and placing the seasonal coefficients at the appropriate positions.
 """
 function completeCoefficientsVector(model::SARIMAModel)
+    ModelFl = typeofModelElements(model)
     maCoefficients = model.θ
     if model.Q > 0
-        maCoefficients = zeros(model.Q * model.seasonality)
+        maCoefficients = zeros(ModelFl, model.Q * model.seasonality)
         maCoefficients[1:model.q] = model.θ
         for i in 1:model.Q
             maCoefficients[model.seasonality * i] = model.Θ[i]
@@ -572,7 +581,7 @@ function completeCoefficientsVector(model::SARIMAModel)
 
     arCoefficients = model.ϕ
     if model.P > 0
-        arCoefficients = zeros(model.P * model.seasonality)
+        arCoefficients = zeros(ModelFl, model.P * model.seasonality)
         arCoefficients[1:model.p] = model.ϕ
         for i in 1:model.P
             arCoefficients[model.seasonality * i] = model.Φ[i]
@@ -583,13 +592,13 @@ function completeCoefficientsVector(model::SARIMAModel)
 end
 
 """
-    toMA(model::SARIMAModel, maxLags::Int64=12)
+    toMA(model::SARIMAModel, maxLags::Int=12)
 
     Convert a SARIMA model to a Moving Average (MA) model.
 
     # Arguments
     - `model::SARIMAModel`: The SARIMA model to convert.
-    - `maxLags::Int64=12`: The maximum number of lags to include in the MA model.
+    - `maxLags::Int=12`: The maximum number of lags to include in the MA model.
 
     # Returns
     - `MAmodel::MAModel`: The coefficients of the lagged errors in the MA model.
@@ -597,7 +606,7 @@ end
     # References
     - Brockwell, P. J., & Davis, R. A. Time Series: Theory and Methods (page 92). Springer(2009)
 """
-function toMA(model::SARIMAModel, maxLags::Int64=12)
+function toMA(model::SARIMAModel, maxLags::Int=12)
     arCoefficients, maCoefficients = completeCoefficientsVector(model)
     p = isnothing(arCoefficients) ? 0 : length(arCoefficients)
     q = isnothing(maCoefficients) ? 0 : length(maCoefficients)
@@ -615,21 +624,21 @@ end
 
 
 """
-    forecastErrors(model::SARIMAModel, maxLags::Int64=12)
+    forecastErrors(model::SARIMAModel, maxLags::Int=12)
 
     The function computes the forecast errors for the SARIMA model using the estimated σ² and the MA coefficients.
     
     # Arguments
     - `model::SARIMAModel`: The SARIMA model.
-    - `maxLags::Int64=12`: The maximum number of lags to include in the forecast errors.
+    - `maxLags::Int=12`: The maximum number of lags to include in the forecast errors.
 
     # Returns
-    - `computedForecastErrors::Vector{Float64}`: The computed forecast errors.
+    - `computedForecastErrors::Vector{Fl}`: The computed forecast errors.
 
     # References
     - Brockwell, P. J., & Davis, R. A. Time Series: Theory and Methods (page 92). Springer(2009) 
 """
-function forecastErrors(model::SARIMAModel, maxLags::Int64=12)
+function forecastErrors(model::SARIMAModel, maxLags::Int=12)
     ψ = toMA(model, maxLags)
     computedForecastErrors = zeros(maxLags)
     computedForecastErrors[1] = model.σ²
@@ -642,23 +651,23 @@ end
 """
     predict!(
         model::SARIMAModel;
-        stepsAhead::Int64 = 1
+        stepsAhead::Int = 1
         seed::Int = 1234,
         isSimulation::Bool = false,
         displayConfidenceIntervals::Bool = false,
-        confidenceLevel::Float64 = 0.95
-    )
+        confidenceLevel::Fl = 0.95
+    ) where Fl<:AbstractFloat
 
 Predicts the SARIMA model for the next `stepsAhead` periods.
 The resulting forecast is stored within the model in the `forecast` field.
 
 # Arguments
 - `model::SARIMAModel`: The SARIMA model to make predictions.
-- `stepsAhead::Int64`: The number of periods ahead to forecast (default: 1).
+- `stepsAhead::Int`: The number of periods ahead to forecast (default: 1).
 - `seed::Int`: Seed for random number generation when simulating forecasts (default: 1234).
 - `isSimulation::Bool`: Whether to perform a simulation-based forecast (default: false).
 - `displayConfidenceIntervals::Bool`: Whether to display confidence intervals (default: false).
-- `confidenceLevel::Float64`: The confidence level for the confidence intervals (default: 0.95).
+- `confidenceLevel::Fl`: The confidence level for the confidence intervals (default: 0.95).
 
 # Example
 ```julia
@@ -671,22 +680,23 @@ julia> fit!(model)
 julia> predict!(model; stepsAhead=12)
 """
 function predict!(
-    model::SARIMAModel;
-    stepsAhead::Int64 = 1,
-    seed::Int = 1234,
-    isSimulation::Bool = false,
-    displayConfidenceIntervals::Bool = false,
-    confidenceLevel::Float64 = 0.95
-)   
+            model::SARIMAModel;
+            stepsAhead::Int = 1,
+            seed::Int = 1234,
+            isSimulation::Bool = false,
+            displayConfidenceIntervals::Bool = false,
+            confidenceLevel::Fl = 0.95
+        )   where Fl<:AbstractFloat
+    ModelFl = typeofModelElements(model)
     Random.seed!(seed)
-    forecastValues = predict(model, stepsAhead, isSimulation)
+    forecastValues::Vector{ModelFl} = predict(model, stepsAhead, isSimulation)
     forecastTimestamps::Vector{TimeType} = buildDatetimes(timestamp(model.y)[end], getproperty(Dates, model.metadata["granularity"])(model.metadata["frequency"]), model.metadata["weekDaysOnly"], stepsAhead)
     if displayConfidenceIntervals
-        α = 1 - confidenceLevel
-        computedForecastErrors = forecastErrors(model, stepsAhead)
-        zValue = quantile(Normal(0,1), 1 - α/2)
-        lowerConfidenceInterval = [forecastValues[i] - zValue*sqrt(computedForecastErrors[i]) for i=1:stepsAhead]
-        upperConfidenceInterval = [forecastValues[i] + zValue*sqrt(computedForecastErrors[i]) for i=1:stepsAhead]
+        α::ModelFl = 1 - confidenceLevel
+        computedForecastErrors::Vector{ModelFl} = forecastErrors(model, stepsAhead)
+        zValue::ModelFl = quantile(Normal(0,1), 1 - α/2)
+        lowerConfidenceInterval::Vector{ModelFl} = [forecastValues[i] - zValue*sqrt(computedForecastErrors[i]) for i=1:stepsAhead]
+        upperConfidenceInterval::Vector{ModelFl} = [forecastValues[i] + zValue*sqrt(computedForecastErrors[i]) for i=1:stepsAhead]
         data = (datetime = forecastTimestamps, forecast = forecastValues, lower = lowerConfidenceInterval, upper = upperConfidenceInterval)
         model.forecast = TimeArray(data; timestamp=:datetime)
     else
@@ -698,7 +708,7 @@ end
 """
     predict(
         model::SARIMAModel, 
-        stepsAhead::Int64 = 1,
+        stepsAhead::Int = 1,
         isSimulation::Bool = true
     )
 
@@ -707,7 +717,7 @@ Returns the forecasted values.
 
 # Arguments
 - `model::SARIMAModel`: The SARIMA model to make predictions.
-- `stepsAhead::Int64`: The number of periods ahead to forecast (default: 1).
+- `stepsAhead::Int`: The number of periods ahead to forecast (default: 1).
 - `isSimulation::Bool`: Whether to perform a simulation-based forecast (default: true).
 
 # Example
@@ -721,8 +731,13 @@ julia> fit!(model)
 julia> forecastedValues = predict(model, stepsAhead=12)
 ````
 """
-function predict(model::SARIMAModel, stepsAhead::Int64=1, isSimulation::Bool=true)
+function predict(
+            model::SARIMAModel, 
+            stepsAhead::Int=1, 
+            isSimulation::Bool=true
+        )
     !isFitted(model) && throw(ModelNotFitted())
+    ModelFl = typeofModelElements(model)
 
     diffY = differentiate(model.y,model.d,model.D,model.seasonality)
     valuesExog = []
@@ -742,11 +757,11 @@ function predict(model::SARIMAModel, stepsAhead::Int64=1, isSimulation::Bool=tru
         throw(MissingExogenousData())
     end
 
-    yValues::Vector{Float64} = deepcopy(values(diffY))
+    yValues::Vector{ModelFl} = deepcopy(values(diffY))
     errors = deepcopy(model.ϵ)
 
     for _= 1:stepsAhead
-        forecastedValue = model.c + model.trend*(T+stepsAhead)
+        forecastedValue::ModelFl = model.c + model.trend*(T+stepsAhead)
         if model.p > 0
             # ∑ϕᵢyₜ -i
             forecastedValue += sum(model.ϕ[i]*yValues[end-i+1] for i=1:model.p)
@@ -775,7 +790,7 @@ function predict(model::SARIMAModel, stepsAhead::Int64=1, isSimulation::Bool=tru
     end
     initialValuesLength = model.d + model.D*model.seasonality
     initialValuesOffset = length(values(model.y)) - initialValuesLength + 1
-    initialValues::Vector{Float64} = values(model.y)[initialValuesOffset:end]
+    initialValues::Vector{ModelFl} = values(model.y)[initialValuesOffset:end]
     forecast_values = integrate(initialValues, yValues[end-stepsAhead+1:end], model.d, model.D, model.seasonality)
     return forecast_values[initialValuesLength+1:end]
 end
@@ -784,9 +799,9 @@ end
 """
     simulate(
         model::SARIMAModel, 
-        stepsAhead::Int64 = 1, 
-        numScenarios::Int64 = 200,
-        seed::Int64 = 1234
+        stepsAhead::Int = 1, 
+        numScenarios::Int = 200,
+        seed::Int = 1234
     )
 
 Simulates the SARIMA model for the next `stepsAhead` periods assuming that the model's estimated σ².
@@ -794,12 +809,12 @@ Returns a vector of `numScenarios` scenarios of the forecasted values.
 
 # Arguments
 - `model::SARIMAModel`: The SARIMA model to simulate.
-- `stepsAhead::Int64`: The number of periods ahead to simulate. Default is 1.
-- `numScenarios::Int64`: The number of simulation scenarios. Default is 200.
-- `seed::Int64`: The seed of the simulation. Default is 1234.
+- `stepsAhead::Int`: The number of periods ahead to simulate. Default is 1.
+- `numScenarios::Int`: The number of simulation scenarios. Default is 200.
+- `seed::Int`: The seed of the simulation. Default is 1234.
 
 # Returns
-- `Vector{Vector{Float64}}`: A vector of scenarios, each containing the forecasted values for the next `stepsAhead` periods.
+- `Vector{Vector{AbstractFloat}}`: A vector of scenarios, each containing the forecasted values for the next `stepsAhead` periods.
 
 # Example
 ```jldoctest
@@ -812,11 +827,17 @@ julia> fit!(model)
 julia> scenarios = simulate(model, stepsAhead=12, numScenarios=1000)
 ```
 """
-function simulate(model::SARIMAModel, stepsAhead::Int64=1, numScenarios::Int64=200, seed::Int64=1234)
+function simulate(
+            model::SARIMAModel, 
+            stepsAhead::Int=1, 
+            numScenarios::Int=200, 
+            seed::Int=1234
+        )
     !isFitted(model) && throw(ModelNotFitted())
+    ModelFl = typeofModelElements(model)
     Random.seed!(seed)
 
-    scenarios::Vector{Vector{Float64}} = []
+    scenarios::Vector{Vector{ModelFl}} = []
     for _=1:numScenarios
         push!(scenarios, predict(model, stepsAhead, true))
     end
@@ -827,18 +848,18 @@ end
     auto(
         y::TimeArray;
         exog::Union{TimeArray,Nothing}=nothing,
-        seasonality::Int64=1,
-        d::Int64 = -1,
-        D::Int64 = -1,
-        maxp::Int64 = 5,
-        maxd::Int64 = 2,
-        maxq::Int64 = 5,
-        maxP::Int64 = 2,
-        maxD::Int64 = 1,
-        maxQ::Int64 = 2,
+        seasonality::Int=1,
+        d::Int = -1,
+        D::Int = -1,
+        maxp::Int = 5,
+        maxd::Int = 2,
+        maxq::Int = 5,
+        maxP::Int = 2,
+        maxD::Int = 1,
+        maxQ::Int = 2,
         informationCriteria::String = "aicc",
-        allowMean::Bool = true,
-        allowDrift::Bool = true,
+        allowMean::Bool = false,
+        allowDrift::Bool = false,
         integrationTest::String = "kpss",
         seasonalIntegrationTest::String = "seas",
         objectiveFunction::String = "mse",
@@ -852,18 +873,18 @@ Automatically fits the best SARIMA model according to the specified parameters.
 # Arguments
 - `y::TimeArray`: The time series data.
 - `exog::Union{TimeArray,Nothing}`: Optional exogenous variables. If `Nothing`, no exogenous variables are used.
-- `seasonality::Int64`: The seasonality period. Default is 1 (non-seasonal).
-- `d::Int64`: The degree of differencing for the non-seasonal part. Default is -1 (auto-select).
-- `D::Int64`: The degree of differencing for the seasonal part. Default is -1 (auto-select).
-- `maxp::Int64`: The maximum autoregressive order for the non-seasonal part. Default is 5.
-- `maxd::Int64`: The maximum integration order for the non-seasonal part. Default is 2.
-- `maxq::Int64`: The maximum moving average order for the non-seasonal part. Default is 5.
-- `maxP::Int64`: The maximum autoregressive order for the seasonal part. Default is 2.
-- `maxD::Int64`: The maximum integration order for the seasonal part. Default is 1.
-- `maxQ::Int64`: The maximum moving average order for the seasonal part. Default is 2.
+- `seasonality::Int`: The seasonality period. Default is 1 (non-seasonal).
+- `d::Int`: The degree of differencing for the non-seasonal part. Default is -1 (auto-select).
+- `D::Int`: The degree of differencing for the seasonal part. Default is -1 (auto-select).
+- `maxp::Int`: The maximum autoregressive order for the non-seasonal part. Default is 5.
+- `maxd::Int`: The maximum integration order for the non-seasonal part. Default is 2.
+- `maxq::Int`: The maximum moving average order for the non-seasonal part. Default is 5.
+- `maxP::Int`: The maximum autoregressive order for the seasonal part. Default is 2.
+- `maxD::Int`: The maximum integration order for the seasonal part. Default is 1.
+- `maxQ::Int`: The maximum moving average order for the seasonal part. Default is 2.
 - `informationCriteria::String`: The information criteria to be used for model selection. Options are "aic", "aicc", or "bic". Default is "aicc".
-- `allowMean::Bool`: Whether to include a mean term in the model. Default is true.
-- `allowDrift::Bool`: Whether to include a drift term in the model. Default is true.
+- `allowMean::Bool`: Whether to include a mean term in the model. Default is false.
+- `allowDrift::Bool`: Whether to include a drift term in the model. Default is false.
 - `integrationTest::String`: The integration test to be used for determining the non-seasonal integration order. Default is "kpss".
 - `seasonalIntegrationTest::String`: The integration test to be used for determining the seasonal integration order. Default is "seas".
 - `objectiveFunction::String`: The objective function to be used for model selection. Options are "mse", "ml", or "bilevel". Default is "mse".
@@ -877,18 +898,18 @@ Automatically fits the best SARIMA model according to the specified parameters.
 function auto(
     y::TimeArray;
     exog::Union{TimeArray,Nothing}=nothing,
-    seasonality::Int64=1,
-    d::Int64 = -1,
-    D::Int64 = -1,
-    maxp::Int64 = 5,
-    maxd::Int64 = 2,
-    maxq::Int64 = 5,
-    maxP::Int64 = 2,
-    maxD::Int64 = 1,
-    maxQ::Int64 = 2,
+    seasonality::Int=1,
+    d::Int = -1,
+    D::Int = -1,
+    maxp::Int = 5,
+    maxd::Int = 2,
+    maxq::Int = 5,
+    maxP::Int = 2,
+    maxD::Int = 1,
+    maxQ::Int = 2,
     informationCriteria::String = "aicc",
-    allowMean::Bool = true,
-    allowDrift::Bool = true,
+    allowMean::Bool = false,
+    allowDrift::Bool = false,
     integrationTest::String = "kpss",
     seasonalIntegrationTest::String = "seas",
     objectiveFunction::String = "mse",
@@ -913,6 +934,7 @@ function auto(
     @assert seasonalIntegrationTest ∈ ["seas","ch"]
     @assert objectiveFunction ∈ ["mse","ml","bilevel"] 
 
+    ModelFl = eltype(values(y))
     informationCriteriaFunction = getInformationCriteriaFunction(informationCriteria)
 
     # Adjustments based on parameters
@@ -928,8 +950,8 @@ function auto(
         d = selectIntegrationOrder(deepcopy(values(y)), maxd, D, seasonality, integrationTest)
     end
 
-    allowMean = allowMean && (d+D == 0)
-    allowDrift = allowDrift && (d+D == 1)
+    allowMean = allowMean ? allowMean : (d+D == 0)
+    allowDrift = allowDrift ? allowDrift : (d+D >= 1)
 
     # Include initial models
     candidateModels = Vector{SARIMAModel}()
@@ -997,9 +1019,9 @@ end
         models::Vector{SARIMAModel}, 
         y::TimeArray,
         exog::Union{TimeArray,Nothing}, 
-        maxp::Int64, 
-        d::Int64, 
-        maxq::Int64, 
+        maxp::Int, 
+        d::Int, 
+        maxq::Int, 
         allowMean::Bool,
         allowDrift::Bool
     )
@@ -1015,9 +1037,9 @@ The models added are:
 - `models::Vector{SARIMAModel}`: A vector to which the initial SARIMA models will be appended.
 - `y::TimeArray`: The time series data.
 - `exog::Union{TimeArray,Nothing}`: Optional exogenous variables. If `Nothing`, no exogenous variables are used.
-- `maxp::Int64`: The maximum autoregressive order.
-- `d::Int64`: The degree of differencing.
-- `maxq::Int64`: The maximum moving average order.
+- `maxp::Int`: The maximum autoregressive order.
+- `d::Int`: The degree of differencing.
+- `maxq::Int`: The maximum moving average order.
 - `allowMean::Bool`: Whether to include a mean term in the model.
 - `allowDrift::Bool`: Whether to include a drift term in the model.
 """
@@ -1025,9 +1047,9 @@ function initialNonSeasonalModels!(
     models::Vector{SARIMAModel}, 
     y::TimeArray,
     exog::Union{TimeArray,Nothing}, 
-    maxp::Int64, 
-    d::Int64, 
-    maxq::Int64, 
+    maxp::Int, 
+    d::Int, 
+    maxq::Int, 
     allowMean::Bool,
     allowDrift::Bool
 )
@@ -1042,13 +1064,13 @@ end
         models::Vector{SARIMAModel}, 
         y::TimeArray,
         exog::Union{TimeArray,Nothing}, 
-        maxp::Int64, 
-        d::Int64, 
-        maxq::Int64, 
-        maxP::Int64, 
-        D::Int64, 
-        maxQ::Int64, 
-        seasonality::Int64, 
+        maxp::Int, 
+        d::Int, 
+        maxq::Int, 
+        maxP::Int, 
+        D::Int, 
+        maxQ::Int, 
+        seasonality::Int, 
         allowMean::Bool,
         allowDrift::Bool
     )
@@ -1064,13 +1086,13 @@ The models added are:
 - `models::Vector{SARIMAModel}`: A vector to which the initial SARIMA models will be appended.
 - `y::TimeArray`: The time series data.
 - `exog::Union{TimeArray,Nothing}`: Optional exogenous variables. If `Nothing`, no exogenous variables are used.
-- `maxp::Int64`: The maximum autoregressive order for non-seasonal part.
-- `d::Int64`: The degree of differencing for non-seasonal part.
-- `maxq::Int64`: The maximum moving average order for non-seasonal part.
-- `maxP::Int64`: The maximum autoregressive order for seasonal part.
-- `D::Int64`: The degree of differencing for seasonal part.
-- `maxQ::Int64`: The maximum moving average order for seasonal part.
-- `seasonality::Int64`: The seasonality period.
+- `maxp::Int`: The maximum autoregressive order for non-seasonal part.
+- `d::Int`: The degree of differencing for non-seasonal part.
+- `maxq::Int`: The maximum moving average order for non-seasonal part.
+- `maxP::Int`: The maximum autoregressive order for seasonal part.
+- `D::Int`: The degree of differencing for seasonal part.
+- `maxQ::Int`: The maximum moving average order for seasonal part.
+- `seasonality::Int`: The seasonality period.
 - `allowMean::Bool`: Whether to include a mean term in the model.
 - `allowDrift::Bool`: Whether to include a drift term in the model.
 """
@@ -1078,13 +1100,13 @@ function initialSeasonalModels!(
     models::Vector{SARIMAModel}, 
     y::TimeArray,
     exog::Union{TimeArray,Nothing}, 
-    maxp::Int64, 
-    d::Int64, 
-    maxq::Int64, 
-    maxP::Int64, 
-    D::Int64, 
-    maxQ::Int64, 
-    seasonality::Int64, 
+    maxp::Int, 
+    d::Int, 
+    maxq::Int, 
+    maxP::Int, 
+    D::Int, 
+    maxQ::Int, 
+    seasonality::Int, 
     allowMean::Bool,
     allowDrift::Bool
 )
@@ -1168,7 +1190,7 @@ Performs a local search to find the best SARIMA model among the candidate models
 - `showLogs::Bool`: Whether to suppress output. Default is false.
 
 # Returns
-- `Tuple{Float64, Union{SARIMAModel, Nothing}}`: A tuple containing the best criteria value and the corresponding best model found.
+- `Tuple{AbstractFloat, Union{SARIMAModel, Nothing}}`: A tuple containing the best criteria value and the corresponding best model found.
 
 # Example
 ```jldoctest
@@ -1182,15 +1204,16 @@ julia> localSearch!(candidateModels, visitedModels, informationCriteriaFunction)
 ```
 """
 function localSearch!(
-    candidateModels::Vector{SARIMAModel},
-    visitedModels::Dict{String,Dict{String,Any}},
-    informationCriteriaFunction::Function,
-    objectiveFunction::String = "mse",
-    assertStationarity::Bool = false,
-    assertInvertibility::Bool = false,
-    showLogs::Bool = false
-)   
-    localBestCriteria = Inf
+            candidateModels::Vector{SARIMAModel},
+            visitedModels::Dict{String,Dict{String,Any}},
+            informationCriteriaFunction::Function,
+            objectiveFunction::String = "mse",
+            assertStationarity::Bool = false,
+            assertInvertibility::Bool = false,
+            showLogs::Bool = false
+        )   
+    ModelFl = typeofModelElements(candidateModels[1])
+    localBestCriteria::ModelFl = Inf
     localBestModel = nothing
     foreach(model ->
         if !isFitted(model) 
@@ -1226,8 +1249,8 @@ end
         bestModel::SARIMAModel, 
         candidateModels::Vector{SARIMAModel},
         visitedModels::Dict{String,Dict{String,Any}},  
-        maxp::Int64, 
-        maxq::Int64, 
+        maxp::Int, 
+        maxq::Int, 
         allowMean::Bool,
         allowDrift::Bool
     )
@@ -1238,8 +1261,8 @@ Adds non-seasonal SARIMA models to the candidate models vector based on the best
 - `bestModel::SARIMAModel`: The best SARIMA model found so far.
 - `candidateModels::Vector{SARIMAModel}`: A vector of candidate SARIMA models to add new models to.
 - `visitedModels::Dict{String,Dict{String,Any}}`: A dictionary containing information about visited models.
-- `maxp::Int64`: The maximum autoregressive order for non-seasonal part.
-- `maxq::Int64`: The maximum moving average order for non-seasonal part.
+- `maxp::Int`: The maximum autoregressive order for non-seasonal part.
+- `maxq::Int`: The maximum moving average order for non-seasonal part.
 - `allowMean::Bool`: Whether to include a mean term in the model.
 - `allowDrift::Bool`: Whether to include a drift term in the model.
 
@@ -1248,8 +1271,8 @@ function addNonSeasonalModels!(
     bestModel::SARIMAModel, 
     candidateModels::Vector{SARIMAModel},
     visitedModels::Dict{String,Dict{String,Any}},  
-    maxp::Int64, 
-    maxq::Int64, 
+    maxp::Int, 
+    maxq::Int, 
     allowMean::Bool,
     allowDrift::Bool
 )
@@ -1284,8 +1307,8 @@ end
         bestModel::SARIMAModel, 
         candidateModels::Vector{SARIMAModel},
         visitedModels::Dict{String,Dict{String,Any}}, 
-        maxP::Int64, 
-        maxQ::Int64, 
+        maxP::Int, 
+        maxQ::Int, 
         allowMean::Bool,
         allowDrift::Bool
     )
@@ -1296,8 +1319,8 @@ Adds seasonal SARIMA models to the candidate models vector based on the best SAR
 - `bestModel::SARIMAModel`: The best SARIMA model found so far.
 - `candidateModels::Vector{SARIMAModel}`: A vector of candidate SARIMA models to add new models to.
 - `visitedModels::Dict{String,Dict{String,Any}}`: A dictionary containing information about visited models.
-- `maxP::Int64`: The maximum autoregressive order for the seasonal part.
-- `maxQ::Int64`: The maximum moving average order for the seasonal part.
+- `maxP::Int`: The maximum autoregressive order for the seasonal part.
+- `maxQ::Int`: The maximum moving average order for the seasonal part.
 - `allowMean::Bool`: Whether to include a mean term in the model.
 - `allowDrift::Bool`: Whether to include a drift term in the model.
 
@@ -1306,8 +1329,8 @@ function addSeasonalModels!(
     bestModel::SARIMAModel, 
     candidateModels::Vector{SARIMAModel},
     visitedModels::Dict{String,Dict{String,Any}}, 
-    maxP::Int64, 
-    maxQ::Int64, 
+    maxP::Int, 
+    maxQ::Int, 
     allowMean::Bool,
     allowDrift::Bool
 )

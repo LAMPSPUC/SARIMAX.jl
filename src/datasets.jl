@@ -38,7 +38,7 @@ julia> airPassengers = loadDataset(AIR_PASSENGERS)
 ```
 """
 function loadDataset(dataset::Datasets)
-    datasetIndex = Integer(dataset)
+    datasetIndex = Int(dataset)
     seriesData = CSV.read(datasetsPaths[datasetIndex], DataFrame)
     y = TimeArray(seriesData, timestamp = :date)
     return y
@@ -80,13 +80,13 @@ end
 """
     splitTrainTest(
         data::TimeArray;
-        trainSize::Float64=0.8
-    )
+        trainSize::Fl=0.8
+    ) where Fl<:AbstractFloat
 
 Splits the time series in training and testing sets. 
 """
-function splitTrainTest(data::TimeArray; trainPercentage::Float64=0.8)
-    trainingSetEndIndex = floor(Int64, trainPercentage*length(data))
+function splitTrainTest(data::TimeArray; trainPercentage::Fl=0.8) where Fl<:AbstractFloat
+    trainingSetEndIndex = floor(Int, trainPercentage*length(data))
     trainingSet = TimeArray(timestamp(data)[1:trainingSetEndIndex], values(data)[1:trainingSetEndIndex])
     testingSet = TimeArray(timestamp(data)[trainingSetEndIndex+1:end], values(data)[trainingSetEndIndex+1:end])
     return trainingSet, testingSet
