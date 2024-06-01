@@ -1,16 +1,26 @@
 [build-img]: https://github.com/LAMPSPUC/SARIMAX.jl/actions/workflows/ci.yml/badge.svg?branch=master
 [build-url]: https://github.com/LAMPSPUC/SARIMAX.jl/actions/workflows/ci.yml
 
-[codecov-img]: https://codecov.io/github/LAMPSPUC/SARIMAX.jl/graph/badge.svg?token=6Zhd8Jiub3
+[codecov-img]: https://codecov.io/gh/LAMPSPUC/SARIMAX.jl/branch/master/graph/badge.svg?token=6Zhd8Jiub3
 [codecov-url]: https://codecov.io/github/LAMPSPUC/SARIMAX.jl
 
 # Sarimax.jl
 
 | **Build Status** | **Coverage** |
 |:-----------------:|:-----------------:|
-| [![Build Status][build-img]][build-url] | [![codecov]][codecov-img] [codecov-url]|
+| [![Build Status][build-img]][build-url] | [![codecov][codecov-img]][codecov-url]|
 
 Introducing Sarimax.jl, a groundbreaking Julia package that redefines SARIMA (Seasonal Autoregressive Integrated Moving Average) modeling by seamlessly integrating the JuMP framework — a powerful optimization modeling language. Unlike traditional SARIMA methods, Sarimax.jl leverages the optimization capabilities of JuMP, allowing for precise and customizable SARIMA models.
+
+## Index
+* [Features](#features)
+* [Quickstart](#quickstart)
+    * [Stationarity](#stationarity)
+    * [Sarima model](#sarima-model)
+* [Auto SARIMA method](#auto-sarima-method)
+* [SARIMA models with explanatory variable](#sarima-models-with-explanatory-variable)
+* [Contributing](#contributing)
+* [References](#references)
 
 ## Features
 
@@ -74,13 +84,9 @@ A SARIMA model is constructed by adding an autoregressive component and an error
 ### Objective Function
 
 $$
-\underset{c, \phi_i, \theta_i, \Phi_i, \Theta_i, \epsilon_t}{\text{minimize}} \quad \sum_{t=1}^{T} \epsilon_t^2
-$$
+\underset{c, \phi_i, \theta_i, \Phi_i, \Theta_i, \epsilon_t}{\text{minimize}} \quad \sum_{t=1}^{T} \epsilon_t^2 \\
 
-
-
-$$
-\text{subject to} \quad y'_t = c + \sum_{i=1}^{p} \phi_i y'_{t-i} + \sum_{i=1}^{q} \theta_i \epsilon_{t-i} + \sum_{i=1}^{P} \Phi_i y'_{t-s \times i} + \sum_{i=1}^{Q} \Theta_i \epsilon'_{t-s \times i} + \epsilon_t , \quad \forall t \in \{1,\cdots,T\}
+\text{subject to} \quad y'_t = c + \sum_{i=1}^{p} \phi_i y'_{t-i} + \sum_{i=1}^{q} \theta_i \epsilon_{t-i} + \\ \quad \quad \sum_{i=1}^{P} \Phi_i y'_{t-s \times i} + \sum_{i=1}^{Q} \Theta_i \epsilon'_{t-s \times i} + \epsilon_t , \quad \forall t \in \{1,\cdots,T\}
 $$
 
 
