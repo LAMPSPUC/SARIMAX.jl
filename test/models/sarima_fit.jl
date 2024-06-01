@@ -9,75 +9,77 @@ function generateARseries(p,s,ARcoeff, seasCoeff,trend,seed::Int = 1234, error::
     end
     #trend
     x = 1:200
-    seriesValues = randn(s) .+ trend*x[1:s] .+ whiteNoise[1:s]
-    for i in s+1:200
+    seriesValues = randn(s) .+ trend*x[1:max(s,p)] .+ whiteNoise[1:max(s,p)]
+    for i in max(s,p)+1:200
         value = seriesValues[i-s]*seasCoeff + sum(ARcoeff[j]*seriesValues[i-j] for j in 1:p) + trend*x[i] + whiteNoise[i]
         push!(seriesValues,value)
     end
     return TimeArray(dates,seriesValues)
 end 
 
+@testset "Sarima fit" begin
+    @testset "fit p=0 P=1 without white noise" begin
+        ARcoeff = [0]
+        seasCoeff = 0.5
+        trend = 0
+        ARseries = generateARseries(1,12,ARcoeff, seasCoeff,trend,1234, false)
+        modelMSE = SARIMA(ARseries,1,1,0;seasonality =12,P=1,D=0,Q=0)
+        modelML = SARIMA(ARseries,1,1,0;seasonality =12,P=1,D=0,Q=0)
+        modelBILEVEL = SARIMA(ARseries,1,1,0;seasonality =12,P=1,D=0,Q=0)
+        Sarimax.fit!(modelMSE,objectiveFunction="mse")
+        Sarimax.fit!(modelML,objectiveFunction="ml")
+        Sarimax.fit!(modelBILEVEL,objectiveFunction="bilevel") 
+        @test seasCoeff ≈ modelMSE.Φ[1] atol = 1e-3
+        @test seasCoeff ≈ modelML.Φ[1] atol = 1e-3  
+        @test seasCoeff ≈ modelBILEVEL.Φ[1] atol = 1e-3 
+    end
 
-@testset "fit p=0 P=1 without white noise" begin
-    ARcoeff = [0]
-    seasCoeff = 0.5
-    trend = 0
-    ARseries = generateARseries(1,12,ARcoeff, seasCoeff,trend,1234, false)
-    modelMSE = SARIMA(ARseries,1,1,0;seasonality =12,P=1,D=0,Q=0)
-    modelML = SARIMA(ARseries,1,1,0;seasonality =12,P=1,D=0,Q=0)
-    modelBILEVEL = SARIMA(ARseries,1,1,0;seasonality =12,P=1,D=0,Q=0)
-    Sarimax.fit!(modelMSE,objectiveFunction="mse")
-    Sarimax.fit!(modelML,objectiveFunction="ml")
-    Sarimax.fit!(modelBILEVEL,objectiveFunction="bilevel") 
-    @test seasCoeff ≈ modelMSE.Φ[1] atol = 1e-3
-    @test seasCoeff ≈ modelML.Φ[1] atol = 1e-3  
-    @test seasCoeff ≈ modelBILEVEL.Φ[1] atol = 1e-3 
-end
+    @testset "fit (p=1 P=0) and (p=2 P=0) without white noise" begin
 
-@testset "fit (p=1 P=0) and (p=2 P=0) without white noise" begin
-    ar1 = generateSeries(1,1,[0.3],0,1234,false)
-    modelAR1MSE = SARIMA(ar1,1,0,0;seasonality=12,P=0,D=0,Q=0)
-    fit!(modelAR1MSE,objectiveFunction="mse")
-    @test modelAR1MSE.ϕ ≈ [0.3] atol = 1e-3
+        ar1 = generateARseries(1,1,[0.3],0,0,1234,false)
+        modelAR1MSE = SARIMA(ar1,1,0,0;seasonality=12,P=0,D=0,Q=0)
+        fit!(modelAR1MSE,objectiveFunction="mse")
+        @test modelAR1MSE.ϕ ≈ [0.3] atol = 1e-3
 
-    modelAR1ML = SARIMA(ar1,1,0,0;seasonality=12,P=0,D=0,Q=0)
-    fit!(modelAR1ML,objectiveFunction="ml")
-    @test modelAR1ML.ϕ ≈ [0.3] atol = 1e-3
+        modelAR1ML = SARIMA(ar1,1,0,0;seasonality=12,P=0,D=0,Q=0)
+        fit!(modelAR1ML,objectiveFunction="ml")
+        @test modelAR1ML.ϕ ≈ [0.3] atol = 1e-3
 
-    modelAR1BI = SARIMA(ar1,1,0,0;seasonality=12,P=0,D=0,Q=0)
-    fit!(modelAR1BI,objectiveFunction="bilevel")
-    @test modelAR1BI.ϕ ≈ [0.3] atol = 1e-3
+        modelAR1BI = SARIMA(ar1,1,0,0;seasonality=12,P=0,D=0,Q=0)
+        fit!(modelAR1BI,objectiveFunction="bilevel")
+        @test modelAR1BI.ϕ ≈ [0.3] atol = 1e-3
 
-    ar2 = generateSeries(2,1,[0.3,0.4],0,1234,false)
-    modelAR2MSE = SARIMA(ar2,2,0,0;seasonality=12,P=0,D=0,Q=0)
-    fit!(modelAR2MSE,objectiveFunction="mse")
-    @test modelAR2MSE.ϕ ≈ [0.3,0.4] atol = 1e-3
+        ar2 = generateARseries(2,1,[0.3,0.4],0,0,1234,false)
+        modelAR2MSE = SARIMA(ar2,2,0,0;seasonality=12,P=0,D=0,Q=0)
+        fit!(modelAR2MSE,objectiveFunction="mse")
+        @test modelAR2MSE.ϕ ≈ [0.3,0.4] atol = 1e-3
 
-    modelAR2ML = SARIMA(ar2,2,0,0;seasonality=12,P=0,D=0,Q=0)
-    fit!(modelAR2ML,objectiveFunction="ml")
-    @test modelAR2ML.ϕ ≈ [0.3,0.4] atol = 1e-3
+        modelAR2ML = SARIMA(ar2,2,0,0;seasonality=12,P=0,D=0,Q=0)
+        fit!(modelAR2ML,objectiveFunction="ml")
+        @test modelAR2ML.ϕ ≈ [0.3,0.4] atol = 1e-3
 
-    modelAR2BI = SARIMA(ar2,2,0,0;seasonality=12,P=0,D=0,Q=0)
-    fit!(modelAR2BI,objectiveFunction="bilevel")
-    @test modelAR2BI.ϕ ≈ [0.3,0.4] atol = 1e-3
+        modelAR2BI = SARIMA(ar2,2,0,0;seasonality=12,P=0,D=0,Q=0)
+        fit!(modelAR2BI,objectiveFunction="bilevel")
+        @test modelAR2BI.ϕ ≈ [0.3,0.4] atol = 1e-3
 
-end
+    end
 
-@testset "fit p=2 P=1 without white Noise" begin
-    ARcoeff = [-0.3,-0.2]
-    seasCoeff = -0.4
-    trend = 0.1
-    ARseries = generateARseries(2,12,ARcoeff, seasCoeff,trend,1234,false)
-    modelMSE = SARIMA(ARseries,2,1,0;seasonality =12,P=1,D=0,Q=0)
-    modelML = SARIMA(ARseries,2,1,0;seasonality =12,P=1,D=0,Q=0)
-    modelBILEVEL = SARIMA(ARseries,2,1,0;seasonality =12,P=1,D=0,Q=0)
-    fit!(modelMSE,objectiveFunction="mse")
-    fit!(modelML,objectiveFunction="ml")
-    fit!(modelBILEVEL,objectiveFunction="bilevel")
-    @test ARcoeff ≈ modelMSE.ϕ atol = 1e-3 
-    @test seasCoeff ≈ modelMSE.Φ[1] atol = 1e-3 
-    @test ARcoeff ≈ modelML.ϕ atol = 1e-3 
-    @test seasCoeff ≈ modelML.Φ[1] atol = 1e-3 
-    @test ARcoeff ≈ modelBILEVEL.ϕ atol = 1e-3 
-    @test seasCoeff ≈ modelBILEVEL.Φ[1] atol = 1e-3 
-end
+    @testset "fit p=2 P=1 without white Noise" begin
+        ARcoeff = [-0.3,-0.2]
+        seasCoeff = -0.4
+        trend = 0.1
+        ARseries = generateARseries(2,12,ARcoeff, seasCoeff,trend,1234,false)
+        modelMSE = SARIMA(ARseries,2,1,0;seasonality =12,P=1,D=0,Q=0)
+        modelML = SARIMA(ARseries,2,1,0;seasonality =12,P=1,D=0,Q=0)
+        modelBILEVEL = SARIMA(ARseries,2,1,0;seasonality =12,P=1,D=0,Q=0)
+        fit!(modelMSE,objectiveFunction="mse")
+        fit!(modelML,objectiveFunction="ml")
+        fit!(modelBILEVEL,objectiveFunction="bilevel")
+        @test ARcoeff ≈ modelMSE.ϕ atol = 1e-3 
+        @test seasCoeff ≈ modelMSE.Φ[1] atol = 1e-3 
+        @test ARcoeff ≈ modelML.ϕ atol = 1e-3 
+        @test seasCoeff ≈ modelML.Φ[1] atol = 1e-3 
+        @test ARcoeff ≈ modelBILEVEL.ϕ atol = 1e-3 
+        @test seasCoeff ≈ modelBILEVEL.Φ[1] atol = 1e-3 
+    end
+end 
