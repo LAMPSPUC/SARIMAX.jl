@@ -36,12 +36,19 @@ function generateSeries(p,s,coeff,trend, seed::Int = 1234, error:: Bool = true)
     x = 1:200
     if s>1
         seas = 5*sin.(x*2*pi/s)
-        seriesValues = seriesValues.+seas[1:p] #adding seasonality to the initial terms 
+        # adding seasonality to the initial terms
+        for i in 1:p
+            seriesValues[i] += seas[i]
+        end 
     else
         seas= zeros(200)
     end
-    #trend 
-    seriesValues = seriesValues.+x[1:p]*trend #adding trend to the initial terms 
+
+    #adding trend to the initial terms 
+    for i in 1:p
+        seriesValues[i] += trend*x[i]
+    end
+
     # generating AR series
     for i in p+1:200
         value = whiteNoise[i] + seas[i] + x[i]*trend
