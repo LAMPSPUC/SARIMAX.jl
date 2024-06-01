@@ -9,8 +9,13 @@ function generateARseries(p,s,ARcoeff, seasCoeff,trend,seed::Int = 1234, error::
     end
     #trend
     x = 1:200
-    seriesValues = randn(s) .+ trend*x[1:s] .+ whiteNoise[1:s]
-    for i in s+1:200
+    numInitialValues = max(s,p)
+    seriesValues::Vector{Float64} = Vector{Float64}()
+    for i in 1:numInitialValues
+        value = randn() + trend*x[i] + whiteNoise[i]
+        push!(seriesValues,value)
+    end
+    for i in numInitialValues+1:200
         value = seriesValues[i-s]*seasCoeff + sum(ARcoeff[j]*seriesValues[i-j] for j in 1:p) + trend*x[i] + whiteNoise[i]
         push!(seriesValues,value)
     end
