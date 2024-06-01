@@ -77,6 +77,28 @@
         @test_throws ArgumentError Sarimax.selectIntegrationOrder(values(airPassengers), 2, 0, 12,"hegy")
     end
 
+    @testset "automaticDifferentiation" begin 
+        gdpc1Data = loadDataset(GDPC1)
+        nrouData = loadDataset(NROU)
+        seriesVector::Vector{TimeArray} = [gdpc1Data, nrouData]
+        mergedTimeArray = Sarimax.merge(seriesVector)
+
+        @test_throws AssertionError automaticDifferentiation(mergedTimeArray; integrationTest = "test")
+        @test_throws AssertionError automaticDifferentiation(mergedTimeArray; seasonalIntegrationTest = "test")
+        @test_throws AssertionError automaticDifferentiation(mergedTimeArray; seasonalPeriod = -1)
+
+        mergedDiffSeries, diffMetadata = automaticDifferentiation(mergedTimeArray; integrationTest = "kpss", seasonalIntegrationTest = "ch", seasonalPeriod = 12)
+        
+        @test size(mergedDiffSeries,2) == size(mergedTimeArray,2)
+        @test colnames(mergedDiffSeries) == colnames(mergedTimeArray)
+
+        for col in colnames(mergedTimeArray)
+            @test diffMetadata[col][:d] == 2
+            @test diffMetadata[col][:D] == 0
+            @test size(mergedDiffSeries[col],1) == size(mergedTimeArray[col],1) - diffMetadata[col][:d]
+        end
+    end
+
     @testset "logLikelihood and loglike" begin
         mutable struct TestModelUtil <: Sarimax.SarimaxModel
         end
