@@ -300,7 +300,7 @@ julia> fit!(model)
 function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, objectiveFunction::String="mse")
     Fl = typeofModelElements(model)
     isFitted(model) && @info("The model has already been fitted. Overwriting the previous results")
-    @assert objectiveFunction ∈ ["mse","ml","bilevel"] "The objective function $objectiveFunction is not supported. Please use 'mse', 'ml' or 'bilevel'"
+    @assert objectiveFunction ∈ ["mae","mse","ml","bilevel"] "The objective function $objectiveFunction is not supported. Please use 'mae', 'mse', 'ml' or 'bilevel'"
     
     diffY = differentiate(model.y,model.d,model.D, model.seasonality)
     
@@ -358,14 +358,15 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
     fix.(ϵ[1:lb-1],0.0)
 
-    objectiveFunctionDefinition!(mod, objectiveFunction, T, lb)
-
     if model.seasonality > 1
         @expression(mod, ŷ[t=lb:T], c + trend*t + sum(β[i]*exogValues[t,i] for i=1:nExog) + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q) + sum(Φ[k]*yValues[t - (model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q))
     else
         @expression(mod, ŷ[t=lb:T], c + trend*t + sum(β[i]*exogValues[t,i] for i=1:nExog) + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q))
     end
-    @constraint(mod, [t=lb:T], yValues[t] == ŷ[t] + ϵ[t])
+    
+    includeModelConstraints!(mod, yValues, T, lb, objectiveFunction)
+
+    objectiveFunctionDefinition!(mod, objectiveFunction, T, lb)
 
     optimizeModel!(mod, model, objectiveFunction)
     
@@ -455,6 +456,30 @@ function includeSolverParameters!(model::Model, isSilent::Bool=true)
         set_optimizer_attribute(model, "mip_solver", highs)
     end
 end
+
+"""
+    includeModelConstraints!(jumpModel::Model, yValues::Fl, T::Int, lb::Int, objectiveFunction::String) where Fl<:AbstractFloat
+
+Includes the constraints in the JuMP model for the SARIMA model.
+
+# Arguments
+- `jumpModel::Model`: The JuMP model to which constraints will be included.
+- `yValues::Fl`: The values of the time series.
+- `T::Int`: The total number of observations.
+- `lb::Int`: The lag from which to start considering observations.
+- `objectiveFunction::String`: The objective function used for optimization.
+"""
+function includeModelConstraints!(jumpModel::Model, yValues::Vector{Fl}, T::Int, lb::Int, objectiveFunction::String) where Fl<:AbstractFloat
+    if objectiveFunction == "mae"
+        @variable(jumpModel, ϵ_plus[lb:T] >= 0)
+        @variable(jumpModel, ϵ_minus[lb:T] >= 0)
+        @constraint(jumpModel, [t=lb:T], jumpModel[:ϵ][t] == ϵ_plus[t] + ϵ_minus[t])
+        @constraint(jumpModel, [t=lb:T], yValues[t] - jumpModel[:ŷ][t] <= ϵ_plus[t])
+        @constraint(jumpModel, [t=lb:T], jumpModel[:ŷ][t] - yValues[t] <= - ϵ_minus[t])
+    else
+        @constraint(jumpModel, [t=lb:T], yValues[t] == jumpModel[:ŷ][t] + jumpModel[:ϵ][t])
+    end
+end
     
 """
     objectiveFunctionDefinition!(
@@ -476,6 +501,8 @@ Defines the objective function for optimization in the SARIMA model.
 function objectiveFunctionDefinition!(model::Model, objectiveFunction::String, T::Int, lb::Int)
     if objectiveFunction == "mse"
         @objective(model, Min, mean(model[:ϵ][lb:T].^2))
+    elseif objectiveFunction == "mae"
+        @objective(model, Min, sum(model[:ϵ_plus][t] + model[:ϵ_minus][t] for t=lb:T))
     elseif objectiveFunction == "bilevel"
         @objective(model, Min, mean(model[:ϵ][lb:T].^2))
         set_time_limit_sec(model, 1.0)
@@ -932,7 +959,7 @@ function auto(
     @assert informationCriteria ∈ ["aic","aicc","bic"]
     @assert integrationTest ∈ ["kpss"]
     @assert seasonalIntegrationTest ∈ ["seas","ch"]
-    @assert objectiveFunction ∈ ["mse","ml","bilevel"] 
+    @assert objectiveFunction ∈ ["mae","mse","ml","bilevel"] 
 
     ModelFl = eltype(values(y))
     informationCriteriaFunction = getInformationCriteriaFunction(informationCriteria)
