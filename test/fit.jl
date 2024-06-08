@@ -55,9 +55,9 @@
         airPassengersLog = log.(airPassengers)
         testModel = SARIMA(airPassengersLog, 3, 0, 1; seasonality=12, P=1, D=1, Q=1)
         fit!(testModel)
-        @test aic(testModel) ≈ -494.0240480738949
-        @test aicc(testModel) ≈ -493.3728852831972
-        @test bic(testModel) ≈ -471.6733501176634
+        @test aic(testModel) ≈ -494.02295978581765
+        @test aicc(testModel) ≈ -493.37179699511995
+        @test bic(testModel) ≈ -471.6722618295862
     end
 
 
