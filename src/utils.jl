@@ -30,33 +30,14 @@ julia> stationaryAirPassengers = differentiate(airPassengers, d=1, D=1, s=12)
 function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
     Fl = eltype(values(series))
     copiedValues::Vector{Fl} = values(series)
-    series = TimeArray(timestamp(series), copiedValues, colnames(series))
-    seriesName = colnames(series)[1]
-    if D > 0
-        # @info("Seasonal difference")
-        diffValues::Vector{Fl} = []
-        originalValues::Vector{Fl} = values(series)
-        T = length(originalValues)
-        for i=1:D
-            # Δyₜ = yₜ - y_t-s
-            for j=i*s+1:T
-                push!(diffValues, originalValues[j] - originalValues[j-i*s])
-            end
-        end
-        series = TimeArray(copy(timestamp(series))[(D*s)+1:end],diffValues,[seriesName])
+    coeffs = differentiatedCoefficients(d, D, s, Fl)
+    lenCoeffs = length(coeffs)
+    diffValues::Vector{Fl} = Vector{Fl}()
+    for i in lenCoeffs:length(copiedValues)
+        y_diff = coeffs'copiedValues[i:-1:i-lenCoeffs+1]
+        push!(diffValues, y_diff)
     end
-    # non seasonal diff y
-    # @info("Non seasonal difference")
-    for _ in 1:d
-        diffValues = []
-        originalValues = values(series)
-        T = length(originalValues)
-        # Δyₜ = yₜ - y_t-1
-        for j=2:T
-            push!(diffValues,originalValues[j] - originalValues[j-1])
-        end
-        series = TimeArray(copy(timestamp(series))[2:end],diffValues,[seriesName])
-    end
+    series = TimeArray(timestamp(series)[lenCoeffs:end], diffValues)
     return series
 end
 
@@ -111,6 +92,12 @@ Converts a differentiated time series back to its original scale.
 """
 function integrate(initialValues::Vector{Fl}, diffSeries::Vector{Fl}, d::Int, D::Int, s::Int) where Fl<:AbstractFloat
     # Get the coefficients for differentiation
+    # initialValues = b
+    # diffSeries = a
+    # d = 0
+    # D = 1
+    # s = 12
+    # Fl = Float64
     coeffs = differentiatedCoefficients(d, D, s, Fl)
     lenCoeffs = length(coeffs)
     
@@ -127,10 +114,16 @@ function integrate(initialValues::Vector{Fl}, diffSeries::Vector{Fl}, d::Int, D:
     # Iterate through the differentiated series and compute the original series
     for i in 1:length(diffSeries)
         # Calculate the value at the current index
-        origSeries[initialOffset+i] = diffSeries[i]
+        y_t::Fl = 0.0
+        y_t += diffSeries[i]
+        # y_t += (-1) * coeffs[2:end]'origSeries[initialOffset+i-1:-1:initialOffset+i-lenCoeffs+1]
+        for j in 2:lenCoeffs
+            y_t += (-1) * coeffs[j] * origSeries[initialOffset+i-(j-1)]
+        end
         
         # Add contributions from past observations
-        origSeries[initialOffset+i] -= coeffs[2:end]'origSeries[initialOffset+i-1:-1:initialOffset+i-lenCoeffs+1]
+        # origSeries[initialOffset+i] -= coeffs[2:end]'origSeries[initialOffset+i-1:-1:initialOffset+i-lenCoeffs+1]
+        origSeries[initialOffset+i] = y_t
     end
     
     return origSeries
