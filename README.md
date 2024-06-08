@@ -42,7 +42,7 @@ Since it shows variation that increases with the level of the series, a logarith
 
 ```julia
 import Pkg
-Pkg.add(url = "https://github.com/LuizFCDuarte/SARIMAX.jl.git")
+Pkg.add(url = "https://github.com/LAMPSPUC/SARIMAX.jl")
 using Sarimax
 airp = loadDataset(AIR_PASSENGERS)
 airp_log = log.(airp)
