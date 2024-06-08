@@ -36,7 +36,15 @@
     @test length(simulation) == 301
     @test length(simulation[1]) == 10
 
+    gdpc = loadDataset(GDPC1)
+    modelGDPC1 = auto(gdpc; seasonality=4, objectiveFunction="mse", assertStationarity=true, assertInvertibility=true)
+    @test modelGDPC1.d == 2 # Output of forecast package in R
+    @test modelGDPC1.D == 0 # Output of forecast package in R
 
+    nrou = loadDataset(NROU)
+    modelNROU = auto(nrou; seasonality=4, objectiveFunction="mse", assertStationarity=true, assertInvertibility=true)
+    @test modelNROU.d == 2 # Output of forecast package in R
+    @test modelNROU.D == 0 # Output of forecast package in R
 end
 
 @testset "ARMA to MA" begin
