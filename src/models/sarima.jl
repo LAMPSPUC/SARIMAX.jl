@@ -366,11 +366,11 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     
     includeModelConstraints!(mod, yValues, T, lb, objectiveFunction)
 
-    objectiveFunctionDefinition!(mod, objectiveFunction, T, lb)
+    objectiveFunctionDefinition!(mod, model, objectiveFunction, T, lb)
 
     optimizeModel!(mod, model, objectiveFunction)
     
-    fittedValues::Vector{Fl} = OffsetArrays.no_offset_view(value.(ŷ))
+    fittedValues::Vector{Fl} = vcat(yValues[1:lb-1],OffsetArrays.no_offset_view(value.(ŷ)))
     fittedOriginalLengthDifference = length(values(model.y)) - length(fittedValues)
     initialValuesLength = model.d + model.D*model.seasonality
     initialValuesOffset = fittedOriginalLengthDifference > initialValuesLength ? fittedOriginalLengthDifference - initialValuesLength + 1 : 1
@@ -402,6 +402,18 @@ Determines if the moving average coefficients are treated as model parameters ba
 """
 function MACoefficientsAreModelParameters(objectiveFunction::String)
     return objectiveFunction == "bilevel"
+end
+
+function getParametersVector(model::SARIMAModel)
+    parametersVector::Vector{Symbol} = Vector{Symbol}()
+    model.allowMean && push!(parametersVector, :c)
+    model.allowDrift && push!(parametersVector, :trend)
+    model.p > 0 && push!(parametersVector, :ϕ)
+    model.q > 0 && push!(parametersVector, :θ)
+    model.P > 0 && push!(parametersVector, :Φ)
+    model.Q > 0 && push!(parametersVector, :Θ)
+    !isnothing(model.exog) && push!(parametersVector, :β)
+    return parametersVector
 end
 
 """
@@ -483,7 +495,8 @@ end
     
 """
     objectiveFunctionDefinition!(
-        model::Model,
+        jumpModel::Model,
+        model::SARIMAModel,
         objectiveFunction::String,
         T::Int,
         lb::Int
@@ -492,28 +505,39 @@ end
 Defines the objective function for optimization in the SARIMA model.
 
 # Arguments
-- `model::Model`: The JuMP model.
+- `jumpModel::Model`: The JuMP model.
+- `model::SARIMAModel`: The SARIMA model to be optimized.
 - `objectiveFunction::String`: The objective function to be defined.
 - `T::Int`: The total number of observations.
 - `lb::Int`: The lag from which to start considering observations.
 
 """
-function objectiveFunctionDefinition!(model::Model, objectiveFunction::String, T::Int, lb::Int)
+function objectiveFunctionDefinition!(jumpModel::Model, model::SARIMAModel, objectiveFunction::String, T::Int, lb::Int)
     if objectiveFunction == "mse"
-        @objective(model, Min, mean(model[:ϵ][lb:T].^2))
+        @objective(jumpModel, Min, mean(jumpModel[:ϵ][lb:T].^2))
     elseif objectiveFunction == "mae"
-        @objective(model, Min, sum(model[:ϵ_plus][t] + model[:ϵ_minus][t] for t=lb:T))
+        @objective(jumpModel, Min, sum(jumpModel[:ϵ_plus][t] + jumpModel[:ϵ_minus][t] for t=lb:T))
     elseif objectiveFunction == "bilevel"
-        @objective(model, Min, mean(model[:ϵ][lb:T].^2))
-        set_time_limit_sec(model, 1.0)
+        @objective(jumpModel, Min, mean(jumpModel[:ϵ][lb:T].^2))
+        set_time_limit_sec(jumpModel, 1.0)
+    elseif "lasso"
+        parametersVector::Vector{Symbol} = getParametersVector(model)
+        auxVariables = @variable(jumpModel, [i=1:length(parametersVector)])
+        @constraints(jumpModel, begin
+            [i=1:length(parametersVector)], auxVariables[i] >= 0
+            [i=1:length(parametersVector)], auxVariables[i] >= jumpModel[parametersVector[i]]
+            [i=1:length(parametersVector)], auxVariables[i] >= -jumpModel[parametersVector[i]]
+        end)
+        λ = 1/sqrt(T)
+        @objective(jumpModel, Min, mean(jumpModel[:ϵ][lb:T].^2) + λ * sum(auxVariables[i]))
     elseif objectiveFunction == "ml"
         # llk(ϵ,μ,σ) = logpdf(Normal(μ,abs(σ)),ϵ)
-        # register(model, :llk, 3, llk, autodiff=true)
-        # @NLobjective( model, Max, sum(llk(ϵ[t],μ,σ) for t=lb:T))
-        @variable(model, μ, start = 0.0)
-        @variable(model, σ >= 0.0, start = 1.0)
-        @constraint(model,0 <= μ <= 0.0) 
-        @objective( model, Max,((T-lb)/2) * log(1 / (2*π*σ*σ)) - sum((model[:ϵ][t] - μ)^2 for t in lb:T) / (2*σ*σ))
+        # register(jumpModel, :llk, 3, llk, autodiff=true)
+        # @NLobjective( jumpModel, Max, sum(llk(ϵ[t],μ,σ) for t=lb:T))
+        @variable(jumpModel, μ, start = 0.0)
+        @variable(jumpModel, σ >= 0.0, start = 1.0)
+        @constraint(jumpModel,0 <= μ <= 0.0) 
+        @objective( jumpModel, Max,((T-lb)/2) * log(1 / (2*π*σ*σ)) - sum((jumpModel[:ϵ][t] - μ)^2 for t in lb:T) / (2*σ*σ))
     end
 end
 
