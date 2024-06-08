@@ -37,7 +37,7 @@ function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
         y_diff = coeffs'copiedValues[i:-1:i-lenCoeffs+1]
         push!(diffValues, y_diff)
     end
-    series = TimeArray(timestamp(series)[lenCoeffs:end], diffValues)
+    series = TimeArray(timestamp(series)[lenCoeffs:end], diffValues, colnames(series))
     return series
 end
 

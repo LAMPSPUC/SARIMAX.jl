@@ -57,11 +57,11 @@
         values_diff_2_0::Vector{Float64} = values(diff_2_0)
         values_diff_2_1::Vector{Float64} = values(diff_2_1)
 
-        @test isapprox(integrate(values(y[1:1]), values_diff_1_0, 1, 0, 12), values(y); atol = 1e-3)
-        @test isapprox(integrate(values(y[1:12]), values_diff_0_1, 0, 1, 12), values(y); atol = 1e-3)
-        @test isapprox(integrate(values(y[1:13]), values_diff_1_1, 1, 1, 12), values(y); atol = 1e-3)
-        @test isapprox(integrate(values(y[1:2]), values_diff_2_0, 2, 0, 12), values(y); atol = 1e-3)
-        @test isapprox(integrate(values(y[1:14]), values_diff_2_1, 2, 1, 12), values(y); atol = 1e-3)
+        @test isapprox(integrate(values(y[1:1]), values_diff_1_0, 1, 0, 12), values(y); atol = 1e-5)
+        @test isapprox(integrate(values(y[1:12]), values_diff_0_1, 0, 1, 12), values(y); atol = 1e-5)
+        @test isapprox(integrate(values(y[1:13]), values_diff_1_1, 1, 1, 12), values(y); atol = 1e-5)
+        @test isapprox(integrate(values(y[1:2]), values_diff_2_0, 2, 0, 12), values(y); atol = 1e-5)
+        @test isapprox(integrate(values(y[1:14]), values_diff_2_1, 2, 1, 12), values(y); atol = 1e-5)
     end
 
     @testset "selectSeasonalIntegrationOrder" begin
@@ -115,8 +115,8 @@
 
         fit!(testModel)
 
-        @test loglikelihood(testModel) ≈ 254.01202403694745
-        @test loglike(testModel) ≈ 254.01202403694745
+        @test loglikelihood(testModel) ≈ 254.01147989290882
+        @test loglike(testModel) ≈ 254.01147989290882
     end
 
 end
