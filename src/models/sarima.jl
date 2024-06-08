@@ -355,13 +355,13 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     model.keepProvidedCoefficients && setProvidedCoefficients!(mod, model)
     includeSolverParameters!(mod, silent)
     
-    lb = max(model.p,model.q,model.P*model.seasonality,model.Q*model.seasonality) + 1
+    lb = max(model.p,model.P*model.seasonality) + 1
     fix.(ϵ[1:lb-1],0.0)
 
     if model.seasonality > 1
-        @expression(mod, ŷ[t=lb:T], c + trend*t + sum(β[i]*exogValues[t,i] for i=1:nExog) + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q) + sum(Φ[k]*yValues[t - (model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q))
+        @expression(mod, ŷ[t=lb:T], c + trend*t + sum(β[i]*exogValues[t,i] for i=1:nExog) + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q if (t-j > 0)) + sum(Φ[k]*yValues[t - (model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q if (t - (model.seasonality*w) > 0)))
     else
-        @expression(mod, ŷ[t=lb:T], c + trend*t + sum(β[i]*exogValues[t,i] for i=1:nExog) + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q))
+        @expression(mod, ŷ[t=lb:T], c + trend*t + sum(β[i]*exogValues[t,i] for i=1:nExog) + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q if (t-j > 0)))
     end
     
     includeModelConstraints!(mod, yValues, T, lb, objectiveFunction)
@@ -369,14 +369,14 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     objectiveFunctionDefinition!(mod, model, objectiveFunction, T, lb)
 
     optimizeModel!(mod, model, objectiveFunction)
-    
-    fittedValues::Vector{Fl} = vcat(yValues[1:lb-1],OffsetArrays.no_offset_view(value.(ŷ)))
+
+    fittedValues::Vector{Fl} = Vector(OffsetArrays.no_offset_view(value.(ŷ)))
     fittedOriginalLengthDifference = length(values(model.y)) - length(fittedValues)
     initialValuesLength = model.d + model.D*model.seasonality
     initialValuesOffset = fittedOriginalLengthDifference > initialValuesLength ? fittedOriginalLengthDifference - initialValuesLength + 1 : 1
     initialValues::Vector{Fl} = values(model.y)[initialValuesOffset:fittedOriginalLengthDifference]
 
-    integratedFit = integrate(initialValues, fittedValues, model.d, model.D, model.seasonality)
+    integratedFit = integrate(deepcopy(initialValues), deepcopy(fittedValues), model.d, model.D, model.seasonality)
     lengthIntegratedFit = length(integratedFit)
     fitInSample::TimeArray = TimeArray(timestamp(model.y)[end-lengthIntegratedFit+1:end],integratedFit)
 
@@ -482,6 +482,7 @@ Includes the constraints in the JuMP model for the SARIMA model.
 - `objectiveFunction::String`: The objective function used for optimization.
 """
 function includeModelConstraints!(jumpModel::Model, yValues::Vector{Fl}, T::Int, lb::Int, objectiveFunction::String) where Fl<:AbstractFloat
+    @constraint(jumpModel, mean(jumpModel[:ϵ]) == 0)
     if objectiveFunction == "mae"
         @variable(jumpModel, ϵ_plus[lb:T] >= 0)
         @variable(jumpModel, ϵ_minus[lb:T] >= 0)
