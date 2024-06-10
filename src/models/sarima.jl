@@ -355,7 +355,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     model.keepProvidedCoefficients && setProvidedCoefficients!(mod, model)
     includeSolverParameters!(mod, silent)
     
-    lb = max(model.p,model.P*model.seasonality) + 1
+    lb = max(model.p,model.P*model.seasonality,model.q,model.Q*model.seasonality) + 1
     fix.(ϵ[1:lb-1],0.0)
 
     if model.seasonality > 1
@@ -482,7 +482,6 @@ Includes the constraints in the JuMP model for the SARIMA model.
 - `objectiveFunction::String`: The objective function used for optimization.
 """
 function includeModelConstraints!(jumpModel::Model, yValues::Vector{Fl}, T::Int, lb::Int, objectiveFunction::String) where Fl<:AbstractFloat
-    @constraint(jumpModel, mean(jumpModel[:ϵ]) == 0)
     if objectiveFunction == "mae"
         @variable(jumpModel, ϵ_plus[lb:T] >= 0)
         @variable(jumpModel, ϵ_minus[lb:T] >= 0)

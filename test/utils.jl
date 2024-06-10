@@ -115,8 +115,8 @@
 
         fit!(testModel)
 
-        @test loglikelihood(testModel) ≈ 254.01147989290882
-        @test loglike(testModel) ≈ 254.01147989290882
+        @test loglikelihood(testModel) ≈ 254.01202403694745
+        @test loglike(testModel) ≈ 254.01202403694745
     end
 
 end
