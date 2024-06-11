@@ -156,6 +156,15 @@ function selectSeasonalIntegrationOrder(
         return StateSpaceModels.seasonal_strength_test(y, seasonality)
     elseif test == "ch"
         return StateSpaceModels.canova_hansen_test(y, seasonality)
+    elseif test == "ocsb"
+        py"""
+        import pmdarima as pm
+        import numpy as np
+        def seasonal_diffs(ts, seasonal_period):
+            ts_np = np.array(ts)
+            return pm.arima.nsdiffs(ts_np, m=seasonal_period)
+        """
+        return py"seasonal_diffs"(y, seasonality)
     end
 
     throw(ArgumentError("The test $test is not supported"))
