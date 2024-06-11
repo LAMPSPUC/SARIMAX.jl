@@ -88,4 +88,14 @@ end
         @test ARcoeff ≈ modelBILEVEL.ϕ atol = 1e-3 
         @test seasCoeff ≈ modelBILEVEL.Φ[1] atol = 1e-3 
     end
+
+    @testset "fit M4 series" begin 
+        test_series_json = JSON.parsefile("datasets/series_38351.json")
+        train_dict = Dict{String,Vector{Float64}}("train" => test_series_json["train"])
+        test_series_df = DataFrame(train_dict)
+        series = loadDataset(test_series_df)
+        autoModel = auto(series; seasonality = 12, seasonalIntegrationTest="ocsb", assertStationarity=true, assertInvertibility=true)
+        @test autoModel.d == 1
+        @test autoModel.D == 1
+    end
 end 
