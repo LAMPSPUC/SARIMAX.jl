@@ -21,10 +21,14 @@ using StateSpaceModels
 using Statistics
 using TimeSeries
 using PyCall
+using Conda
 # using GLMNet
 # using Lasso
 
 abstract type SarimaxModel end
+
+Conda.add("numpy")
+Conda.add("pmdarima")
 
 include("datasets.jl")
 include("datetime_utils.jl")
