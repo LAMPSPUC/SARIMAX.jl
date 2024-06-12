@@ -46,11 +46,16 @@ end
 
 """
     loadDataset(
-        df::DataFrame
+        df::DataFrame,
+        showLogs::Bool=false
     )
 
 Loads a dataset from a Dataframe. If the DataFrame does not have a column named
-`date` a new column will be created with the index of the DataFrame. 
+`date` a new column will be created with the index of the DataFrame.
+
+# Arguments
+- `df::DataFrame`: The DataFrame to be converted to a TimeArray.
+- `showLogs::Bool=false`: If true, logs will be shown.
 
 # Example
 ```jldoctest
@@ -66,11 +71,11 @@ julia> airPassengers = loadDataset(airPassengersDf)
 
 ```
 """
-function loadDataset(df::DataFrame)
+function loadDataset(df::DataFrame, showLogs::Bool=false)
     auxiliarDF = deepcopy(df)
     if !(:date in propertynames(auxiliarDF))
-        @info("The DataFrame does not have a column named 'date'.")
-        @info("Creating a date column with the index of the DataFrame")
+        showLogs && @info("The DataFrame does not have a column named 'date'.")
+        showLogs && @info("Creating a date column with the index of the DataFrame")
         auxiliarDF[!,:date] = [Date(i) for i=1:size(auxiliarDF,1)]
     end
     y = TimeArray(auxiliarDF, timestamp = :date)
