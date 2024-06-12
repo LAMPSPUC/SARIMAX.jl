@@ -812,7 +812,7 @@ function predict(
     errors = deepcopy(model.ϵ)
 
     for _= 1:stepsAhead
-        forecastedValue::ModelFl = model.c + model.trend*(T+stepsAhead)
+        forecastedValue::ModelFl = model.c + model.trend # *(T+stepsAhead)
         if model.p > 0
             # ∑ϕᵢyₜ -i
             forecastedValue += sum(model.ϕ[i]*yValues[end-i+1] for i=1:model.p)
