@@ -813,13 +813,14 @@ function predict(
 
     for _= 1:stepsAhead
         forecastedValue::ModelFl = model.c + model.trend # *(T+stepsAhead)
+        errorsLength = length(errors)
         if model.p > 0
             # ∑ϕᵢyₜ -i
             forecastedValue += sum(model.ϕ[i]*yValues[end-i+1] for i=1:model.p)
         end
         if model.q > 0
             # ∑θᵢϵₜ-i
-            forecastedValue += sum(model.θ[j]*errors[end-j+1] for j=1:model.q)
+            forecastedValue += sum(model.θ[j]*errors[end-j+1] for j=1:model.q if (errorsLength-j+1 > 0))
         end
         if model.P > 0
             # ∑Φₖyₜ-(s*k)
@@ -827,7 +828,7 @@ function predict(
         end
         if model.Q > 0
             # ∑Θₖϵₜ-(s*k)
-            forecastedValue += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q)
+            forecastedValue += sum(model.Θ[w]*errors[end-(model.seasonality*w)+1] for w=1:model.Q if (errorsLength-(model.seasonality*w)+1 > 0))
         end
         if !isnothing(model.exog)
             forecastedValue += valuesExog[T+stepsAhead,:]'model.exogCoefficients
