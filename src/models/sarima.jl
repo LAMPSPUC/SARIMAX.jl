@@ -1007,6 +1007,11 @@ function auto(
 
     fixConstant = !isnothing(allowMean) || !isnothing(allowDrift) ||  (d+D > 1)
 
+    maxp = min(maxp, length(values(y)) / 3)
+    maxq = min(maxq, length(values(y)) / 3)
+    maxP = min(maxP, length(values(y)) / 3 * seasonality)
+    maxQ = min(maxQ, length(values(y)) / 3 * seasonality)
+
     # Include initial models
     candidateModels = Vector{SARIMAModel}()
     visitedModels = Dict{String,Dict{String,Any}}()
