@@ -1105,7 +1105,9 @@ Returns a SARIMA model for a series that is constant.
 - `SARIMAModel`: The SARIMA model for the constant series.
 """
 function constantSeriesModelSpecification(y::TimeArray, exog::Union{TimeArray,Nothing}, allowMean::Bool)
-    return SARIMA(y, exog, 0, 0, 0; allowMean=allowMean)
+    model = SARIMA(y, exog, 0, 0, 0; allowMean=allowMean)
+    fit!(model)
+    return model
 end
 
 """
@@ -1158,7 +1160,10 @@ function constantDiffSeriesModelSpecification(y::TimeArray, exog::Union{TimeArra
             model = SARIMA(y, model.exog, 0, d, 0; allowMean=false, allowDrift=false)
         end
     end
-    return
+
+    fit!(model)
+
+    return model
 end
 
 """
