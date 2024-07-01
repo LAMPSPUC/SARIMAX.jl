@@ -992,6 +992,12 @@ function auto(
     ModelFl = eltype(values(y))
     informationCriteriaFunction = getInformationCriteriaFunction(informationCriteria)
 
+    # Deal with constant series
+    if isConstant(y)
+        constant = isnothing(allowMean) ? true : allowMean
+        return constantSeriesModelSpecification(y, exog, constant)
+    end
+
     # Adjustments based on parameters
     if seasonality == 1
         D = 0
@@ -1010,10 +1016,16 @@ function auto(
 
     fixConstant = !isnothing(allowMean) || !isnothing(allowDrift) ||  (d+D > 1)
 
-    maxp = min(maxp, length(values(y)) / 3)
-    maxq = min(maxq, length(values(y)) / 3)
-    maxP = min(maxP, length(values(y)) / 3 * seasonality)
-    maxQ = min(maxQ, length(values(y)) / 3 * seasonality)
+    # Deal with series constant after differencing
+    if d+D > 0 && isConstant(differentiate(y, d, D, seasonality))
+        return constantDiffSeriesModelSpecification(y, exog, d, D, seasonality, allowMean, allowDrift)
+    end
+
+    # Set maximum orders
+    maxp = min(maxp, floor(Int,length(values(y)) / 3))
+    maxq = min(maxq, floor(Int,length(values(y)) / 3))
+    maxP = min(maxP, floor(Int,length(values(y)) / 3 * seasonality))
+    maxQ = min(maxQ, floor(Int,length(values(y)) / 3 * seasonality))
 
     # Include initial models
     candidateModels = Vector{SARIMAModel}()
@@ -1073,6 +1085,80 @@ function getInformationCriteriaFunction(informationCriteria::String)
         return bic
     end
     throw(ArgumentError("The information criteria '$informationCriteria' is not supported"))
+end
+    
+"""
+    constantSeriesModelSpecification(
+        y::TimeArray, 
+        exog::Union{TimeArray,Nothing}, 
+        allowMean::Bool
+    )
+
+Returns a SARIMA model for a series that is constant.
+
+# Arguments
+- `y::TimeArray`: The time series data.
+- `exog::Union{TimeArray,Nothing}`: Optional exogenous variables. If `Nothing`, no exogenous variables are used.
+- `allowMean::Bool`: Whether to include a mean term in the model.
+
+# Returns
+- `SARIMAModel`: The SARIMA model for the constant series.
+"""
+function constantSeriesModelSpecification(y::TimeArray, exog::Union{TimeArray,Nothing}, allowMean::Bool)
+    return SARIMA(y, exog, 0, 0, 0; allowMean=allowMean)
+end
+
+"""
+    constantDiffSeriesModelSpecification(
+        y::TimeArray, 
+        exog::Union{TimeArray,Nothing}, 
+        d::Int, 
+        D::Int, 
+        seasonality::Int, 
+        allowMean::Bool, 
+        allowDrift::Bool
+    )
+
+Returns a SARIMA model for a series that is constant after differencing.
+
+# Arguments
+- `y::TimeArray`: The time series data.
+- `exog::Union{TimeArray,Nothing}`: Optional exogenous variables. If `Nothing`, no exogenous variables are used.
+- `d::Int`: The degree of differencing.
+- `D::Int`: The degree of seasonal differencing.
+- `seasonality::Int`: The seasonality period.
+- `allowMean::Bool`: Whether to include a mean term in the model.
+- `allowDrift::Bool`: Whether to include a drift term in the model.
+
+# Returns
+- `SARIMAModel`: The SARIMA model for the series that is constant after differencing.
+
+"""
+function constantDiffSeriesModelSpecification(y::TimeArray, exog::Union{TimeArray,Nothing}, d::Int, D::Int, seasonality::Int, allowMean::Bool, allowDrift::Bool)
+    if isnothing(exog)
+        if (D > 0 && d == 0)
+            # TODO: Check if it is necessary to specify the intercept value 
+            # constant should be mean(dy) / seasonality
+            model = SARIMA(y, 0, d, 0; P=0, D=D, Q=0, seasonality=seasonality, allowMean=false, allowDrift=true)
+        elseif (D > 0 && d > 0)
+            model = SARIMA(y, 0, d, 0; P=0, D=D, Q=0, seasonality=seasonality, allowMean=false, allowDrift=false)
+        elseif (d == 2)
+            model = SARIMA(y, 0, d, 0; allowMean=false, allowDrift=false)
+        elseif (d < 2)
+            # TODO: Check if it is necessary to specify the intercept value 
+            # constant should be mean(dy)
+            model = SARIMA(y, 0, d, 0; allowMean=true, allowDrift=false)
+        else
+            throw(ArgumentError("Data follow a simple polynomial and are not suitable for ARIMA modelling."))
+        end
+    else
+        if (D > 0)
+            model = SARIMA(y, model.exog, 0, d, 0; P=0, D=D, Q=0, seasonality=seasonality, allowMean=false, allowDrift=false)
+        else
+            model = SARIMA(y, model.exog, 0, d, 0; allowMean=false, allowDrift=false)
+        end
+    end
+    return
 end
 
 """
@@ -1413,7 +1499,7 @@ function addSeasonalModels!(
         newQ = bestModel.Q + Q
         modelOrder = bestModel.p + bestModel.q + newP + newQ
         (modelOrder > maxOrder) && continue
-        
+
         if newP < 0 || newQ < 0 || newP > maxP || newQ > maxQ || newP + newQ == 0 || newP + newQ > 2
             continue
         end
@@ -1468,7 +1554,7 @@ Adds non-seasonal and seasonal SARIMA models variation to the candidate models v
 - `allowDrift::Bool`: Whether to include a drift term in the model.
 - `fixConstant::Bool`: Whether to fix the constant term.
 """
-function addSeasonalAndNonSeasonalModels!(
+function addNonSeasonalAndSeasonalModels!(
     bestModel::SARIMAModel, 
     candidateModels::Vector{SARIMAModel},
     visitedModels::Dict{String,Dict{String,Any}},

@@ -259,6 +259,24 @@ function automaticDifferentiation(
     return diffSeries, diffSeriesMetadata
 end
 
+"""
+    isConstant(
+        series::TimeArray,
+    )
+
+Check if a time series is constant.
+
+# Arguments
+- `series::TimeArray`: The time series data.
+
+# Returns
+A boolean indicating whether the time series is constant.
+"""
+function isConstant(series::TimeArray)
+    seriesValues = values(series)
+    return length(unique(seriesValues)) == 1
+end
+
 
 """
     loglikelihood(model::SarimaxModel)
