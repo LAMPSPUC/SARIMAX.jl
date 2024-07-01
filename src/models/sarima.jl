@@ -1005,6 +1005,8 @@ function auto(
     allowMean = isnothing(allowMean) ? (d+D == 0) : allowMean  
     allowDrift = isnothing(allowDrift) ?  (d+D == 1) : allowDrift
 
+    fixConstant = !isnothing(allowMean) || !isnothing(allowDrift) ||  (d+D > 1)
+
     # Include initial models
     candidateModels = Vector{SARIMAModel}()
     visitedModels = Dict{String,Dict{String,Any}}()
@@ -1022,10 +1024,9 @@ function auto(
     iterations = 1
     while iterations <= ITERATION_LIMIT
 
-        addNonSeasonalModels!(bestModel, candidateModels, visitedModels, maxp, maxq, allowMean, allowDrift)
-        (seasonality > 1) && addSeasonalModels!(bestModel, candidateModels, visitedModels, maxP, maxQ, allowMean, allowDrift)
-        (d+D == 0) && addChangedConstantModel!(bestModel, candidateModels, visitedModels)
-        (d+D == 1) && addChangedConstantModel!(bestModel, candidateModels, visitedModels,true)
+        addNonSeasonalModels!(bestModel, candidateModels, visitedModels, maxp, maxq, allowMean, allowDrift, fixConstant)
+        (seasonality > 1) && addSeasonalModels!(bestModel, candidateModels, visitedModels, maxP, maxQ, allowMean, allowDrift, fixConstant)
+        (seasonality > 1) && addNonSeasonalAndSeasonalModels!(bestModel, candidateModels, visitedModels, maxp, maxq, maxP, maxQ, 5, allowMean, allowDrift, fixConstant)
 
         itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility, showLogs)
         
@@ -1304,7 +1305,8 @@ end
         maxp::Int, 
         maxq::Int, 
         allowMean::Bool,
-        allowDrift::Bool
+        allowDrift::Bool,
+        fixConstant::Bool
     )
 
 Adds non-seasonal SARIMA models to the candidate models vector based on the best SARIMA model found.
@@ -1317,6 +1319,7 @@ Adds non-seasonal SARIMA models to the candidate models vector based on the best
 - `maxq::Int`: The maximum moving average order for non-seasonal part.
 - `allowMean::Bool`: Whether to include a mean term in the model.
 - `allowDrift::Bool`: Whether to include a drift term in the model.
+- `fixConstant::Bool`: Whether to fix the constant term.
 
 """
 function addNonSeasonalModels!(
@@ -1326,7 +1329,8 @@ function addNonSeasonalModels!(
     maxp::Int, 
     maxq::Int, 
     allowMean::Bool,
-    allowDrift::Bool
+    allowDrift::Bool,
+    fixConstant::Bool
 )
     for p in -1:1, q in -1:1
         newp = bestModel.p + p
@@ -1350,6 +1354,7 @@ function addNonSeasonalModels!(
                 )
         if !isVisited(newModel,visitedModels)
             push!(candidateModels, newModel)
+            fixConstant || addChangedConstantModel!(newModel, candidateModels, visitedModels, model.d + model.D == 1)
         end
     end
 end
@@ -1362,7 +1367,8 @@ end
         maxP::Int, 
         maxQ::Int, 
         allowMean::Bool,
-        allowDrift::Bool
+        allowDrift::Bool,
+        fixConstant::Bool
     )
 
 Adds seasonal SARIMA models to the candidate models vector based on the best SARIMA model found.
@@ -1375,6 +1381,7 @@ Adds seasonal SARIMA models to the candidate models vector based on the best SAR
 - `maxQ::Int`: The maximum moving average order for the seasonal part.
 - `allowMean::Bool`: Whether to include a mean term in the model.
 - `allowDrift::Bool`: Whether to include a drift term in the model.
+- `fixConstant::Bool`: Whether to fix the constant term.
 
 """
 function addSeasonalModels!(
@@ -1384,7 +1391,8 @@ function addSeasonalModels!(
     maxP::Int, 
     maxQ::Int, 
     allowMean::Bool,
-    allowDrift::Bool
+    allowDrift::Bool,
+    fixConstant::Bool
 )
     for P in -1:1, Q in -1:1
         newP = bestModel.P + P
@@ -1408,11 +1416,99 @@ function addSeasonalModels!(
                 )
         if !isVisited(newModel,visitedModels)
             push!(candidateModels, newModel)
+            fixConstant || addChangedConstantModel!(newModel, candidateModels, visitedModels, model.d + model.D == 1)
         end
     end
 end
 
 """
+    addNonSeasonalAndSeasonalModels!(
+        bestModel::SARIMAModel, 
+        candidateModels::Vector{SARIMAModel},
+        visitedModels::Dict{String,Dict{String,Any}},
+        maxp::Int,
+        maxq::Int, 
+        maxP::Int, 
+        maxQ::Int,
+        maxOrder::Int, 
+        allowMean::Bool,
+        allowDrift::Bool,
+        fixConstant::Bool
+    )
+
+Adds non-seasonal and seasonal SARIMA models variation to the candidate models vector based on the best SARIMA model found.
+
+# Arguments
+- `bestModel::SARIMAModel`: The best SARIMA model found so far.
+- `candidateModels::Vector{SARIMAModel}`: A vector of candidate SARIMA models to add new models to.
+- `visitedModels::Dict{String,Dict{String,Any}}`: A dictionary containing information about visited models.
+- `maxp::Int`: The maximum autoregressive order for the non-seasonal part.
+- `maxq::Int`: The maximum moving average order for the non-seasonal part.
+- `maxP::Int`: The maximum autoregressive order for the seasonal part.
+- `maxQ::Int`: The maximum moving average order for the seasonal part.
+- `maxOrder::Int`: The maximum order of the model.
+- `allowMean::Bool`: Whether to include a mean term in the model.
+- `allowDrift::Bool`: Whether to include a drift term in the model.
+- `fixConstant::Bool`: Whether to fix the constant term.
+"""
+function addSeasonalAndNonSeasonalModels!(
+    bestModel::SARIMAModel, 
+    candidateModels::Vector{SARIMAModel},
+    visitedModels::Dict{String,Dict{String,Any}},
+    maxp::Int,
+    maxq::Int, 
+    maxP::Int, 
+    maxQ::Int,
+    maxOrder::Int, 
+    allowMean::Bool,
+    allowDrift::Bool,
+    fixConstant::Bool
+)
+    for p in [-1,1], q in [-1,1], P in [-1,1], Q in [-1,1]
+        newp = bestModel.p + p
+        newq = bestModel.q + q
+        newP = bestModel.P + P
+        newQ = bestModel.Q + Q
+        if newp < 0 || newq < 0 || newp > maxp || newq > maxq
+            continue
+        end
+
+        if newP < 0 || newQ < 0 || newP > maxP || newQ > maxQ 
+            continue
+        end
+
+        if newP + newQ + newp + newq > maxOrder
+            continue
+        end
+
+        newModel = SARIMA(
+                    deepcopy(bestModel.y),
+                    deepcopy(bestModel.exog),
+                    newp,
+                    bestModel.d,
+                    newq;
+                    seasonality=bestModel.seasonality,
+                    P=newP,
+                    D=bestModel.D,
+                    Q=newQ,
+                    allowMean=allowMean,
+                    allowDrift=allowDrift
+                )
+        if !isVisited(newModel,visitedModels)
+            push!(candidateModels, newModel)
+            fixConstant || addChangedConstantModel!(newModel, candidateModels, visitedModels, model.d + model.D == 1) 
+        end
+    end
+end
+
+"""
+    addChangedConstantModel!(
+        bestModel::SARIMAModel,
+        candidateModels::Vector{SARIMAModel},
+        visitedModels::Dict{String,Dict{String,Any}},
+        drift::Bool = false
+    )
+
     addChangedConstantModel!(
         bestModel::SARIMAModel,
         candidateModels::Vector{SARIMAModel},
