@@ -994,6 +994,7 @@ function auto(
 
     # Deal with constant series
     if isConstant(y)
+        showLogs && @info("The series is constant")
         constant = isnothing(allowMean) ? true : allowMean
         return constantSeriesModelSpecification(y, exog, constant)
     end
@@ -1011,13 +1012,15 @@ function auto(
         d = selectIntegrationOrder(deepcopy(values(y)), maxd, D, seasonality, integrationTest)
     end
 
+    fixConstant = !isnothing(allowMean) || !isnothing(allowDrift) ||  (d+D > 1)
+
     allowMean = isnothing(allowMean) ? (d+D == 0) : allowMean  
     allowDrift = isnothing(allowDrift) ?  (d+D == 1) : allowDrift
 
-    fixConstant = !isnothing(allowMean) || !isnothing(allowDrift) ||  (d+D > 1)
 
     # Deal with series constant after differencing
     if d+D > 0 && isConstant(differentiate(y, d, D, seasonality))
+        showLogs && @info("The series is constant after differencing")
         return constantDiffSeriesModelSpecification(y, exog, d, D, seasonality, allowMean, allowDrift)
     end
 
@@ -1049,6 +1052,7 @@ function auto(
         (seasonality > 1) && addNonSeasonalAndSeasonalModels!(bestModel, candidateModels, visitedModels, maxp, maxq, maxP, maxQ, maxOrder, allowMean, allowDrift, fixConstant)
 
         itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility, showLogs)
+        showLogs && @info("Iteration $(iterations): Best model found is $(getId(itBestModel)) with $(itBestCriteria) criteria")
         
         (itBestCriteria > bestCriteria) && break
         bestCriteria = itBestCriteria
@@ -1263,6 +1267,13 @@ function initialSeasonalModels!(
     allowDrift::Bool
 )
     push!(models, SARIMA(y, exog, 0, d, 0; seasonality=seasonality, P=0, D=D, Q=0, allowMean=allowMean, allowDrift=allowDrift))
+
+    # Add non-seasonal models
+    (maxp >= 1) && push!(models, SARIMA(y, exog, 1, d, 0; seasonality=seasonality, P=0, D=D, Q=0, allowMean=allowMean, allowDrift=allowDrift))
+    (maxq >= 1) && push!(models, SARIMA(y, exog, 0, d, 1; seasonality=seasonality, P=0, D=D, Q=0, allowMean=allowMean, allowDrift=allowDrift))
+    (maxp >= 2 && maxq >= 2) && push!(models, SARIMA(y, exog, 2, d, 2; seasonality=seasonality, P=0, D=D, Q=0, allowMean=allowMean, allowDrift=allowDrift))
+
+    # Add seasonal models
     (maxp >= 1 && maxP >= 1) && push!(models, SARIMA(y, exog, 1, d, 0; seasonality=seasonality, P=1, D=D, Q=0, allowMean=allowMean, allowDrift=allowDrift))
     (maxq >= 1 && maxQ >= 1) && push!(models, SARIMA(y, exog, 0, d, 1; seasonality=seasonality, P=0, D=D, Q=1, allowMean=allowMean, allowDrift=allowDrift))
     (maxp >= 2 && maxq >= 2 && maxP >= 1 && maxQ >= 1) && push!(models, SARIMA(y, exog, 2, d, 2; seasonality=seasonality, P=1, D=D, Q=1, allowMean=allowMean, allowDrift=allowDrift))
@@ -1437,7 +1448,11 @@ function addNonSeasonalModels!(
     for p in -1:1, q in -1:1
         newp = bestModel.p + p
         newq = bestModel.q + q
-        if newp < 0 || newq < 0 || newp > maxp || newq > maxq || newp + newq == 0 || newp + newq > maxOrder
+        if newp < 0 || newq < 0 || newp > maxp || newq > maxq || newp + newq == 0
+            continue
+        end
+
+        if newp + newq + bestModel.P + bestModel.Q > maxOrder
             continue
         end
 
@@ -1456,7 +1471,7 @@ function addNonSeasonalModels!(
                 )
         if !isVisited(newModel,visitedModels)
             push!(candidateModels, newModel)
-            fixConstant || addChangedConstantModel!(newModel, candidateModels, visitedModels, model.d + model.D == 1)
+            fixConstant || addChangedConstantModel!(newModel, candidateModels, visitedModels, newModel.d + newModel.D == 1)
         end
     end
 end
@@ -1524,7 +1539,7 @@ function addSeasonalModels!(
                 )
         if !isVisited(newModel,visitedModels)
             push!(candidateModels, newModel)
-            fixConstant || addChangedConstantModel!(newModel, candidateModels, visitedModels, model.d + model.D == 1)
+            fixConstant || addChangedConstantModel!(newModel, candidateModels, visitedModels, newModel.d + newModel.D == 1)
         end
     end
 end
@@ -1604,7 +1619,7 @@ function addNonSeasonalAndSeasonalModels!(
                 )
         if !isVisited(newModel,visitedModels)
             push!(candidateModels, newModel)
-            fixConstant || addChangedConstantModel!(newModel, candidateModels, visitedModels, model.d + model.D == 1) 
+            fixConstant || addChangedConstantModel!(newModel, candidateModels, visitedModels, newModel.d + newModel.D == 1) 
         end
     end
 end
