@@ -1005,7 +1005,7 @@ function auto(
     end
 
     if D < 0
-        D = selectSeasonalIntegrationOrder(deepcopy(values(y)) ,seasonality,seasonalIntegrationTest)
+        D = (length(values(y)) < 2*seasonality) ? 0 : selectSeasonalIntegrationOrder(deepcopy(values(y)) ,seasonality,seasonalIntegrationTest)
     end
 
     if d < 0 
@@ -1027,8 +1027,8 @@ function auto(
     # Set maximum orders
     maxp = min(maxp, floor(Int,length(values(y)) / 3))
     maxq = min(maxq, floor(Int,length(values(y)) / 3))
-    maxP = min(maxP, floor(Int,length(values(y)) / 3 * seasonality))
-    maxQ = min(maxQ, floor(Int,length(values(y)) / 3 * seasonality))
+    maxP = (seasonality == 1) ? 0 : min(maxP, floor(Int,length(values(y)) / 3 * seasonality))
+    maxQ = (seasonality == 1) ? 0 : min(maxQ, floor(Int,length(values(y)) / 3 * seasonality))
 
     # Include initial models
     candidateModels = Vector{SARIMAModel}()
