@@ -22,13 +22,27 @@ using Statistics
 using TimeSeries
 using PyCall
 using Conda
+using RCall
 # using GLMNet
 # using Lasso
 
 abstract type SarimaxModel end
 
-Conda.add("numpy")
-Conda.add("pmdarima")
+try
+    pyimport("pmdarima")
+    pyimport("numpy")
+catch e
+    @warn "Could not load python libraries. Please make sure you have numpy and pmdarima installed."
+end
+
+try
+    R"""
+    library(forecast)
+    """
+catch e
+    @warn "Could not load R libraries. Please make sure you have forecast installed."
+end
+
 
 include("datasets.jl")
 include("datetime_utils.jl")

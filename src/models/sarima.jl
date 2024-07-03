@@ -985,8 +985,8 @@ function auto(
     @assert maxD >= 0
     @assert maxQ >= 0
     @assert informationCriteria ∈ ["aic","aicc","bic"]
-    @assert integrationTest ∈ ["kpss"]
-    @assert seasonalIntegrationTest ∈ ["seas","ch","ocsb"]
+    @assert integrationTest ∈ ["kpss","kpssR"]
+    @assert seasonalIntegrationTest ∈ ["seas","ch","ocsb","ocsbR"]
     @assert objectiveFunction ∈ ["mae","mse","ml","bilevel"] 
 
     ModelFl = eltype(values(y))

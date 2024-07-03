@@ -157,16 +157,32 @@ function selectSeasonalIntegrationOrder(
     elseif test == "ch"
         return StateSpaceModels.canova_hansen_test(y, seasonality)
     elseif test == "ocsb"
-        py"""
-        import pmdarima as pm
-        import numpy as np
-        def seasonal_diffs(ts, seasonal_period):
-            ts_np = np.array(ts)
-            return pm.arima.nsdiffs(ts_np, m=seasonal_period)
-        """
-        return py"seasonal_diffs"(y, seasonality)
+        try
+            py"""
+            def seasonal_diffs(ts, seasonal_period):
+                ts_np = numpy.array(ts)
+                return pmdarima.arima.nsdiffs(ts_np, m=seasonal_period)
+            """
+            return py"seasonal_diffs"(y, seasonality)
+        catch e
+            println(e)
+            throw(Error("It seems that the pmdarima package is not installed. Please install it to use the 'ocsb' test."))
+        end
+    elseif test == "ocsbR"
+        try
+            @rput y seasonality
+            R"""
+            # Example time series data (replace with your actual data)
+            ts_data <- ts(y, frequency = seasonality)
+            D <- nsdiffs(ts_data)
+            """
+            D::Int = @rget D
+            return D
+        catch e
+            println(e)
+            throw(Error("It seems that the R forecast package is not installed. Please install it to use the 'ocsbR' test."))
+        end
     end
-
     throw(ArgumentError("The test $test is not supported"))
 end
 
@@ -198,6 +214,22 @@ function selectIntegrationOrder(
     ) where Fl<:AbstractFloat
     if test == "kpss"
         return StateSpaceModels.repeated_kpss_test(y, maxd, D, seasonality)
+    elseif test == "kpssR"
+        try
+            @rput y maxd D seasonality
+            R"""
+            diffy <- y
+            if (D > 0 & seasonality > 1) {
+                diffy <- diff(y, differences = D, lag = seasonality)
+            }
+            d <- ndiffs(diffy, test="kpss", max.d = maxd)
+            """
+            d::Int = @rget d
+            return d
+        catch e
+            println(e)
+            throw(Error("It seems that the R forecast package is not installed. Please install it to use the 'kpssR' test."))
+        end
     end
 
     throw(ArgumentError("The test $test is not supported"))
