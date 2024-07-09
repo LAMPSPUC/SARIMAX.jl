@@ -300,7 +300,7 @@ julia> fit!(model)
 function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, objectiveFunction::String="mse")
     Fl = typeofModelElements(model)
     isFitted(model) && @info("The model has already been fitted. Overwriting the previous results")
-    @assert objectiveFunction ∈ ["mae","mse","ml","bilevel"] "The objective function $objectiveFunction is not supported. Please use 'mae', 'mse', 'ml' or 'bilevel'"
+    @assert objectiveFunction ∈ ["mae","mse","ml","bilevel","lasso","ridge"] "The objective function $objectiveFunction is not supported. Please use 'mae', 'mse', 'ml' or 'bilevel'"
     
     diffY = differentiate(model.y,model.d,model.D, model.seasonality)
     
@@ -355,7 +355,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     model.keepProvidedCoefficients && setProvidedCoefficients!(mod, model)
     includeSolverParameters!(mod, silent)
     
-    lb = max(model.p,model.P*model.seasonality,model.q,model.Q*model.seasonality) + 1
+    lb = max(model.p,model.P*model.seasonality) + 1
     fix.(ϵ[1:lb-1],0.0)
 
     if model.seasonality > 1
@@ -380,7 +380,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     lengthIntegratedFit = length(integratedFit)
     fitInSample::TimeArray = TimeArray(timestamp(model.y)[end-lengthIntegratedFit+1:end],integratedFit)
 
-    residualsVariance = computeSARIMAModelVariance(mod, lb, objectiveFunction)
+    residualsVariance = computeSARIMAModelVariance(mod, lb, objectiveFunction, getHyperparametersNumber(model))
 
     c = is_valid(mod, c) ? value(c) : 0.0
     trend = is_valid(mod, trend) ? value(trend) : 0.0
@@ -513,6 +513,7 @@ Defines the objective function for optimization in the SARIMA model.
 
 """
 function objectiveFunctionDefinition!(jumpModel::Model, model::SARIMAModel, objectiveFunction::String, T::Int, lb::Int)
+    parametersVector::Vector{Symbol} = getParametersVector(model)
     if objectiveFunction == "mse"
         @objective(jumpModel, Min, mean(jumpModel[:ϵ][lb:T].^2))
     elseif objectiveFunction == "mae"
@@ -521,7 +522,6 @@ function objectiveFunctionDefinition!(jumpModel::Model, model::SARIMAModel, obje
         @objective(jumpModel, Min, mean(jumpModel[:ϵ][lb:T].^2))
         set_time_limit_sec(jumpModel, 1.0)
     elseif objectiveFunction == "lasso"
-        parametersVector::Vector{Symbol} = getParametersVector(model)
         auxVariables = @variable(jumpModel, [i=1:length(parametersVector)])
         @constraints(jumpModel, begin
             [i=1:length(parametersVector)], auxVariables[i] >= 0
@@ -529,7 +529,11 @@ function objectiveFunctionDefinition!(jumpModel::Model, model::SARIMAModel, obje
             [i=1:length(parametersVector)], auxVariables[i] >= -jumpModel[parametersVector[i]]
         end)
         λ = 1/sqrt(T)
-        @objective(jumpModel, Min, mean(jumpModel[:ϵ][lb:T].^2) + λ * sum(auxVariables[i]))
+        @objective(jumpModel, Min, mean(jumpModel[:ϵ][lb:T].^2) + λ * sum(auxVariables))
+    elseif objectiveFunction == "ridge"
+        λ = 1/sqrt(T)
+        auxVariables = @variable(jumpModel, [i=1:length(parametersVector)])
+        @objective(jumpModel, Min, mean(jumpModel[:ϵ][lb:T].^2) + λ * sum(auxVariables.^2))
     elseif objectiveFunction == "ml"
         # llk(ϵ,μ,σ) = logpdf(Normal(μ,abs(σ)),ϵ)
         # register(jumpModel, :llk, 3, llk, autodiff=true)
@@ -584,7 +588,7 @@ function optimizeModel!(jumpModel::Model, model::SARIMAModel, objectiveFunction:
 end
 
 """
-    computeSARIMAModelVariance(model::Model, lb::Int, objectiveFunction::String)
+    computeSARIMAModelVariance(model::Model, lb::Int, objectiveFunction::String, nParameters::Int)
 
 Computes the variance of the SARIMA model's errors.
 
@@ -592,17 +596,18 @@ Computes the variance of the SARIMA model's errors.
 - `model::Model`: The SARIMA model.
 - `lb::Int`: The lag from which to compute the variance.
 - `objectiveFunction::String`: The objective function used for fitting the model.
+- `nParameters::Int`: The number of parameters in the model.
 
 # Returns
 - `AbstractFloat`: The computed variance.
 
 """
-function computeSARIMAModelVariance(model::Model, lb::Int, objectiveFunction::String)
+function computeSARIMAModelVariance(model::Model, lb::Int, objectiveFunction::String, nParameters:: Int)
     if objectiveFunction == "ml"
         return value(model[:σ])^2
     end
-
-    return var(value.(model[:ϵ])[lb:end])
+    nstar = length(value.(model[:ϵ])) 
+    return sum(value.(model[:ϵ]).^2 )  / ( nstar - nParameters + 1)
 end
 
 """
@@ -987,7 +992,7 @@ function auto(
     @assert informationCriteria ∈ ["aic","aicc","bic"]
     @assert integrationTest ∈ ["kpss","kpssR"]
     @assert seasonalIntegrationTest ∈ ["seas","ch","ocsb","ocsbR"]
-    @assert objectiveFunction ∈ ["mae","mse","ml","bilevel"] 
+    @assert objectiveFunction ∈ ["mae","mse","ml","bilevel","lasso","ridge"] 
 
     ModelFl = eltype(values(y))
     informationCriteriaFunction = getInformationCriteriaFunction(informationCriteria)
@@ -1041,7 +1046,7 @@ function auto(
     end
 
     # Fit models
-    bestCriteria, bestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility,showLogs)
+    bestCriteria, bestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility,showLogs,maxp,maxP)
     
     ITERATION_LIMIT = 100
     iterations = 1
@@ -1051,7 +1056,7 @@ function auto(
         (seasonality > 1) && addSeasonalModels!(bestModel, candidateModels, visitedModels, maxP, maxQ, maxOrder ,allowMean, allowDrift, fixConstant)
         (seasonality > 1) && addNonSeasonalAndSeasonalModels!(bestModel, candidateModels, visitedModels, maxp, maxq, maxP, maxQ, maxOrder, allowMean, allowDrift, fixConstant)
 
-        itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility, showLogs)
+        itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility, showLogs,maxp,maxP)
         showLogs && @info("Iteration $(iterations): Best model found is $(getId(itBestModel)) with $(itBestCriteria) criteria")
         
         (itBestCriteria > bestCriteria) && break
@@ -1338,7 +1343,9 @@ end
         objectiveFunction::String = "mse",
         assertStationarity::Bool = false,
         assertInvertibility::Bool = false,
-        showLogs::Bool = false
+        showLogs::Bool = false,
+        maxp::Int=0,
+        maxP::Int=0
     )
 
 Performs a local search to find the best SARIMA model among the candidate models.
@@ -1351,6 +1358,8 @@ Performs a local search to find the best SARIMA model among the candidate models
 - `assertStationarity::Bool`: Whether to assert stationarity of the fitted models. Default is false.
 - `assertInvertibility::Bool`: Whether to assert invertibility of the fitted models. Default is false.
 - `showLogs::Bool`: Whether to suppress output. Default is false.
+- `maxp::Int`: The maximum autoregressive order for non-seasonal part. Default is 0.
+- `maxP::Int`: The maximum autoregressive order for seasonal part. Default is 0.
 
 # Returns
 - `Tuple{AbstractFloat, Union{SARIMAModel, Nothing}}`: A tuple containing the best criteria value and the corresponding best model found.
@@ -1373,7 +1382,9 @@ function localSearch!(
             objectiveFunction::String = "mse",
             assertStationarity::Bool = false,
             assertInvertibility::Bool = false,
-            showLogs::Bool = false
+            showLogs::Bool = false,
+            maxp::Int=0,
+            maxP::Int=0
         )   
     ModelFl = typeofModelElements(candidateModels[1])
     localBestCriteria::ModelFl = Inf
@@ -1381,7 +1392,7 @@ function localSearch!(
     foreach(model ->
         if !isFitted(model) 
             fit!(model;objectiveFunction=objectiveFunction)
-            criteria = informationCriteriaFunction(model)
+            criteria = informationCriteriaFunction(model,maxp,maxP)
             showLogs && @info("Fitted $(getId(model)) with $(criteria)")
             visitedModels[getId(model)] = Dict(
                 "criteria" => criteria
