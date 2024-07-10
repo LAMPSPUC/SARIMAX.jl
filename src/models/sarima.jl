@@ -355,7 +355,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     model.keepProvidedCoefficients && setProvidedCoefficients!(mod, model)
     includeSolverParameters!(mod, silent)
     
-    lb = max(model.p,model.P*model.seasonality) + 1
+    lb = max(model.p, model.P*model.seasonality, model.q, model.Q*model.seasonality) + 1
     fix.(ϵ[1:lb-1],0.0)
 
     if model.seasonality > 1
@@ -606,7 +606,7 @@ function computeSARIMAModelVariance(model::Model, lb::Int, objectiveFunction::St
     if objectiveFunction == "ml"
         return value(model[:σ])^2
     end
-    nstar = length(value.(model[:ϵ])) 
+    nstar = length(value.(model[:ϵ])) - (lb - 1)
     return sum(value.(model[:ϵ]).^2 )  / ( nstar - nParameters + 1)
 end
 
@@ -1214,6 +1214,7 @@ function initialNonSeasonalModels!(
     allowMean::Bool,
     allowDrift::Bool
 )
+    push!(models, SARIMA(y, exog, 0, d, 0; allowMean=false, allowDrift=false))
     push!(models, SARIMA(y, exog, 0, d, 0; allowMean=allowMean, allowDrift=allowDrift))
     (maxp >= 1) && push!(models, SARIMA(y, exog, 1, d, 0; allowMean=allowMean, allowDrift=allowDrift))
     (maxq >= 1) && push!(models, SARIMA(y, exog, 0, d, 1; allowMean=allowMean, allowDrift=allowDrift))
@@ -1270,7 +1271,8 @@ function initialSeasonalModels!(
     seasonality::Int, 
     allowMean::Bool,
     allowDrift::Bool
-)
+)   
+    push!(models, SARIMA(y, exog, 0, d, 0; seasonality=seasonality, P=0, D=D, Q=0, allowMean=false, allowDrift=false))
     push!(models, SARIMA(y, exog, 0, d, 0; seasonality=seasonality, P=0, D=D, Q=0, allowMean=allowMean, allowDrift=allowDrift))
 
     # Add non-seasonal models
