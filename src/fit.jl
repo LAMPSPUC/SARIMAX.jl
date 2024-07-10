@@ -86,14 +86,12 @@ function bic(T::Int, K::Int, loglikeVal::Fl) where Fl<:AbstractFloat
 end
 
 """
-    aic(model::SarimaxModel, maxp::Int=0, maxP::Int=0) -> Fl
+    aic(model::SarimaxModel) -> Fl
 
 Calculate the Akaike Information Criterion (AIC) for a SARIMAX model.
 
 # Arguments
 - `model::SarimaxModel`: The SARIMAX model for which AIC is calculated.
-- `maxp::Int=0`: Maximum value of the AR order.
-- `maxP::Int=0`: Maximum value of the seasonal AR order.
 
 # Returns
 The AIC value calculated using the number of parameters and log-likelihood value of the model.
@@ -102,7 +100,7 @@ The AIC value calculated using the number of parameters and log-likelihood value
 - Throws a `MissingMethodImplementation` if the `getHyperparametersNumber` method is not implemented for the given model type.
 
 """
-function aic(model::SarimaxModel,maxp::Int=0,maxP::Int=0)
+function aic(model::SarimaxModel)
     !hasHyperparametersMethods(typeof(model)) && throw(MissingMethodImplementation("getHyperparametersNumber"))
     K = Sarimax.getHyperparametersNumber(model)
     # T = length(model.ϵ)
@@ -114,14 +112,12 @@ function aic(model::SarimaxModel,maxp::Int=0,maxP::Int=0)
 end
 
 """
-    aicc(model::SarimaxModel, maxp::Int=0, maxP::Int=0) -> Fl
+    aicc(model::SarimaxModel) -> Fl
 
 Calculate the Corrected Akaike Information Criterion (AICc) for a SARIMAX model.
 
 # Arguments
 - `model::SarimaxModel`: The SARIMAX model for which AICc is calculated.
-- `maxp::Int=0`: Maximum value of the AR order.
-- `maxP::Int=0`: Maximum value of the seasonal AR order.
 
 # Returns
 The AICc value calculated using the number of parameters, sample size, and log-likelihood value of the model.
@@ -130,7 +126,7 @@ The AICc value calculated using the number of parameters, sample size, and log-l
 - Throws a `MissingMethodImplementation` if the `getHyperparametersNumber` method is not implemented for the given model type.
 
 """
-function aicc(model::SarimaxModel,maxp::Int=0,maxP::Int=0)
+function aicc(model::SarimaxModel)
     !hasHyperparametersMethods(typeof(model)) && throw(MissingMethodImplementation("getHyperparametersNumber"))
     K = getHyperparametersNumber(model)
     # T = length(model.ϵ)
@@ -140,14 +136,12 @@ function aicc(model::SarimaxModel,maxp::Int=0,maxP::Int=0)
 end
 
 """
-    bic(model::SarimaxModel, maxp::Int=0, maxP::Int=0) -> Fl
+    bic(model::SarimaxModel) -> Fl
 
 Calculate the Bayesian Information Criterion (BIC) for a SARIMAX model.
 
 # Arguments
 - `model::SarimaxModel`: The SARIMAX model for which BIC is calculated.
-- `maxp::Int=0`: Maximum value of the AR order.
-- `maxP::Int=0`: Maximum value of the seasonal AR order.
 
 # Returns
 The BIC value calculated using the number of parameters, sample size, and log-likelihood value of the model.
@@ -156,7 +150,7 @@ The BIC value calculated using the number of parameters, sample size, and log-li
 - Throws a `MissingMethodImplementation` if the `getHyperparametersNumber` method is not implemented for the given model type.
 
 """
-function bic(model::SarimaxModel,maxp::Int=0,maxP::Int=0)
+function bic(model::SarimaxModel)
     !hasHyperparametersMethods(typeof(model)) && throw(MissingMethodImplementation("getHyperparametersNumber"))
     K = getHyperparametersNumber(model)
     # T = length(model.ϵ)

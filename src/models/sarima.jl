@@ -1395,7 +1395,7 @@ function localSearch!(
     foreach(model ->
         if !isFitted(model) 
             fit!(model;objectiveFunction=objectiveFunction)
-            criteria = informationCriteriaFunction(model,maxp,maxP)
+            criteria = informationCriteriaFunction(model)
             showLogs && @info("Fitted $(getId(model)) with $(criteria)")
             visitedModels[getId(model)] = Dict(
                 "criteria" => criteria
