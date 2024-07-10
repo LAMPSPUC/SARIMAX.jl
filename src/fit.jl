@@ -109,9 +109,7 @@ function aic(model::SarimaxModel,maxp::Int=0,maxP::Int=0)
     # return aic(K, loglike(model))
     # offset = -2 * loglike(model) - length(model.y) * log(model.σ²)
     # return offset + T * log(model.σ²) + 2*K
-    seasonalMultiplier = model.seasonality == 1 ? 0 : 1
-    AROffset = max(maxp,maxP*model.seasonality*seasonalMultiplier)
-    T = length(model.y) - model.d - model.D * model.seasonality - AROffset
+    T = length(model.y) - model.d - model.D * model.seasonality 
     return 2*K + T * log(model.σ²)
 end
 
@@ -137,9 +135,7 @@ function aicc(model::SarimaxModel,maxp::Int=0,maxP::Int=0)
     K = getHyperparametersNumber(model)
     # T = length(model.ϵ)
     # return aicc(T, K, loglike(model))
-    seasonalMultiplier = model.seasonality == 1 ? 0 : 1
-    AROffset = max(maxp,maxP*model.seasonality*seasonalMultiplier)
-    T = length(model.y) - model.d - model.D * model.seasonality - AROffset
+    T = length(model.y) - model.d - model.D * model.seasonality 
     return aic(model) + ((2*K*K + 2*K) / (T - K - 1))
 end
 
@@ -165,8 +161,6 @@ function bic(model::SarimaxModel,maxp::Int=0,maxP::Int=0)
     K = getHyperparametersNumber(model)
     # T = length(model.ϵ)
     # return bic(T, K, loglike(model))
-    seasonalMultiplier = model.seasonality == 1 ? 0 : 1
-    AROffset = max(maxp,maxP*model.seasonality*seasonalMultiplier)
-    T = length(model.y) - model.d - model.D * model.seasonality - AROffset
+    T = length(model.y) - model.d - model.D * model.seasonality
     return aic(model) + K *(log(T) - 2)
 end

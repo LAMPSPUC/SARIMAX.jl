@@ -266,7 +266,8 @@ Returns the number of hyperparameters of a SARIMA model.
 function getHyperparametersNumber(model::SARIMAModel)
     k = (model.allowMean) ? 1 : 0
     k = (model.allowDrift) ? k + 1 : k
-    return model.p + model.q + model.P + model.Q + k
+    initialization = max(model.p, model.P*model.seasonality, model.q, model.Q*model.seasonality)
+    return model.p + model.q + model.P + model.Q + k + initialization
 end
 
 """
@@ -316,6 +317,8 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     nExog = isnothing(model.exog) ? 0 : size(values(diffY),2) - 1
     exogValues = isnothing(model.exog) ? [] : values(diffY)[:,2:end]
 
+    lb = max(model.p, model.P*model.seasonality, model.q, model.Q*model.seasonality)
+
     mod = Model(optimizer)
 
     if (model.allowMean)
@@ -335,7 +338,10 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     @variable(mod,-1 <= β[1:nExog] <= 1)
     @variable(mod,-1 <= ϕ[1:model.p] <= 1)
     @variable(mod,-1 <= Φ[1:model.P] <= 1)
-    @variable(mod,ϵ[1:T])
+    @variable(mod,ϵ[1-lb:T])
+    @variable(mod,y0[1-lb:0])
+
+    fix.(ϵ[1-lb:0], 0.0)
     
     if MACoefficientsAreModelParameters(objectiveFunction)
         @variable(mod,θ[i=1:model.q] in Parameter(i))
@@ -354,19 +360,16 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
 
     model.keepProvidedCoefficients && setProvidedCoefficients!(mod, model)
     includeSolverParameters!(mod, silent)
-    
-    lb = max(model.p, model.P*model.seasonality, model.q, model.Q*model.seasonality) + 1
-    fix.(ϵ[1:lb-1],0.0)
 
     if model.seasonality > 1
-        @expression(mod, ŷ[t=lb:T], c + trend + sum(β[i]*exogValues[t,i] for i=1:nExog) + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q if (t-j > 0)) + sum(Φ[k]*yValues[t - (model.seasonality*k)] for k=1:model.P) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q if (t - (model.seasonality*w) > 0)))
+        @expression(mod, ŷ[t=1:T], c + trend + sum(β[i]*exogValues[t,i] for i=1:nExog) + sum(ϕ[i]*y0[t - i] for i=1:model.p if (t-i < 1)) + sum(ϕ[i]*yValues[t - i] for i=1:model.p if (t-i > 0)) + sum(θ[j]*ϵ[t - j] for j=1:model.q) + sum(Φ[k]*y0[t - (model.seasonality*k)] for k=1:model.P if((t - (model.seasonality*k) < 1))) + sum(Φ[k]*yValues[t - (model.seasonality*k)] for k=1:model.P if (t - (model.seasonality*k) > 0)) + sum(Θ[w]*ϵ[t - (model.seasonality*w)] for w=1:model.Q))
     else
-        @expression(mod, ŷ[t=lb:T], c + trend + sum(β[i]*exogValues[t,i] for i=1:nExog) + sum(ϕ[i]*yValues[t - i] for i=1:model.p) + sum(θ[j]*ϵ[t - j] for j=1:model.q if (t-j > 0)))
+        @expression(mod, ŷ[t=1:T], c + trend + sum(β[i]*exogValues[t,i] for i=1:nExog) + sum(ϕ[i]*y0[t - i] for i=1:model.p if (t-i < 1)) + sum(ϕ[i]*yValues[t - i] for i=1:model.p if (t-i > 0)) + sum(θ[j]*ϵ[t - j] for j=1:model.q))
     end
     
-    includeModelConstraints!(mod, yValues, T, lb, objectiveFunction)
+    includeModelConstraints!(mod, yValues, T, objectiveFunction)
 
-    objectiveFunctionDefinition!(mod, model, objectiveFunction, T, lb)
+    objectiveFunctionDefinition!(mod, model, objectiveFunction, T)
 
     optimizeModel!(mod, model, objectiveFunction)
 
@@ -380,13 +383,14 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     lengthIntegratedFit = length(integratedFit)
     fitInSample::TimeArray = TimeArray(timestamp(model.y)[end-lengthIntegratedFit+1:end],integratedFit)
 
-    residualsVariance = computeSARIMAModelVariance(mod, lb, objectiveFunction, getHyperparametersNumber(model))
+    residualsVariance = computeSARIMAModelVariance(mod, objectiveFunction, getHyperparametersNumber(model))
 
     c = is_valid(mod, c) ? value(c) : 0.0
     trend = is_valid(mod, trend) ? value(trend) : 0.0
     exogCoefficients = isnothing(model.exog) ? nothing : value.(β) 
+    residuals::Vector{Fl} = value.(ϵ)[1:end]
 
-    fillFitValues!(model,c,trend,value.(ϕ),value.(θ),value.(ϵ)[lb:end],residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ),exogCoefficients=exogCoefficients)
+    fillFitValues!(model,c,trend,value.(ϕ),value.(θ),residuals,residualsVariance,fitInSample;Φ=value.(Φ),Θ=value.(Θ),exogCoefficients=exogCoefficients)
 end
 
 """
@@ -470,7 +474,7 @@ function includeSolverParameters!(model::Model, isSilent::Bool=true)
 end
 
 """
-    includeModelConstraints!(jumpModel::Model, yValues::Fl, T::Int, lb::Int, objectiveFunction::String) where Fl<:AbstractFloat
+    includeModelConstraints!(jumpModel::Model, yValues::Fl, T::Int, objectiveFunction::String) where Fl<:AbstractFloat
 
 Includes the constraints in the JuMP model for the SARIMA model.
 
@@ -478,18 +482,17 @@ Includes the constraints in the JuMP model for the SARIMA model.
 - `jumpModel::Model`: The JuMP model to which constraints will be included.
 - `yValues::Fl`: The values of the time series.
 - `T::Int`: The total number of observations.
-- `lb::Int`: The lag from which to start considering observations.
 - `objectiveFunction::String`: The objective function used for optimization.
 """
-function includeModelConstraints!(jumpModel::Model, yValues::Vector{Fl}, T::Int, lb::Int, objectiveFunction::String) where Fl<:AbstractFloat
+function includeModelConstraints!(jumpModel::Model, yValues::Vector{Fl}, T::Int, objectiveFunction::String) where Fl<:AbstractFloat
     if objectiveFunction == "mae"
-        @variable(jumpModel, ϵ_plus[lb:T] >= 0)
-        @variable(jumpModel, ϵ_minus[lb:T] >= 0)
-        @constraint(jumpModel, [t=lb:T], jumpModel[:ϵ][t] == ϵ_plus[t] + ϵ_minus[t])
-        @constraint(jumpModel, [t=lb:T], yValues[t] - jumpModel[:ŷ][t] <= ϵ_plus[t])
-        @constraint(jumpModel, [t=lb:T], jumpModel[:ŷ][t] - yValues[t] <= - ϵ_minus[t])
+        @variable(jumpModel, ϵ_plus[1:T] >= 0)
+        @variable(jumpModel, ϵ_minus[1:T] >= 0)
+        @constraint(jumpModel, [t=1:T], jumpModel[:ϵ][t] == ϵ_plus[t] + ϵ_minus[t])
+        @constraint(jumpModel, [t=1:T], yValues[t] - jumpModel[:ŷ][t] <= ϵ_plus[t])
+        @constraint(jumpModel, [t=1:T], jumpModel[:ŷ][t] - yValues[t] <= - ϵ_minus[t])
     else
-        @constraint(jumpModel, [t=lb:T], yValues[t] == jumpModel[:ŷ][t] + jumpModel[:ϵ][t])
+        @constraint(jumpModel, [t=1:T], yValues[t] == jumpModel[:ŷ][t] + jumpModel[:ϵ][t])
     end
 end
     
@@ -498,8 +501,7 @@ end
         jumpModel::Model,
         model::SARIMAModel,
         objectiveFunction::String,
-        T::Int,
-        lb::Int
+        T::Int
     )
 
 Defines the objective function for optimization in the SARIMA model.
@@ -509,17 +511,16 @@ Defines the objective function for optimization in the SARIMA model.
 - `model::SARIMAModel`: The SARIMA model to be optimized.
 - `objectiveFunction::String`: The objective function to be defined.
 - `T::Int`: The total number of observations.
-- `lb::Int`: The lag from which to start considering observations.
 
 """
-function objectiveFunctionDefinition!(jumpModel::Model, model::SARIMAModel, objectiveFunction::String, T::Int, lb::Int)
+function objectiveFunctionDefinition!(jumpModel::Model, model::SARIMAModel, objectiveFunction::String, T::Int)
     parametersVector::Vector{Symbol} = getParametersVector(model)
     if objectiveFunction == "mse"
-        @objective(jumpModel, Min, mean(jumpModel[:ϵ][lb:T].^2))
+        @objective(jumpModel, Min, mean(jumpModel[:ϵ].^2))
     elseif objectiveFunction == "mae"
-        @objective(jumpModel, Min, sum(jumpModel[:ϵ_plus][t] + jumpModel[:ϵ_minus][t] for t=lb:T))
+        @objective(jumpModel, Min, sum(jumpModel[:ϵ_plus][t] + jumpModel[:ϵ_minus][t] for t=1:T))
     elseif objectiveFunction == "bilevel"
-        @objective(jumpModel, Min, mean(jumpModel[:ϵ][lb:T].^2))
+        @objective(jumpModel, Min, mean(jumpModel[:ϵ].^2))
         set_time_limit_sec(jumpModel, 1.0)
     elseif objectiveFunction == "lasso"
         auxVariables = @variable(jumpModel, [i=1:length(parametersVector)])
@@ -529,11 +530,11 @@ function objectiveFunctionDefinition!(jumpModel::Model, model::SARIMAModel, obje
             [i=1:length(parametersVector)], auxVariables[i] >= -jumpModel[parametersVector[i]]
         end)
         λ = 1/sqrt(T)
-        @objective(jumpModel, Min, mean(jumpModel[:ϵ][lb:T].^2) + λ * sum(auxVariables))
+        @objective(jumpModel, Min, mean(jumpModel[:ϵ].^2) + λ * sum(auxVariables))
     elseif objectiveFunction == "ridge"
         λ = 1/sqrt(T)
         auxVariables = @variable(jumpModel, [i=1:length(parametersVector)])
-        @objective(jumpModel, Min, mean(jumpModel[:ϵ][lb:T].^2) + λ * sum(auxVariables.^2))
+        @objective(jumpModel, Min, mean(jumpModel[:ϵ].^2) + λ * sum(auxVariables.^2))
     elseif objectiveFunction == "ml"
         # llk(ϵ,μ,σ) = logpdf(Normal(μ,abs(σ)),ϵ)
         # register(jumpModel, :llk, 3, llk, autodiff=true)
@@ -541,7 +542,8 @@ function objectiveFunctionDefinition!(jumpModel::Model, model::SARIMAModel, obje
         @variable(jumpModel, μ, start = 0.0)
         @variable(jumpModel, σ >= 0.0, start = 1.0)
         @constraint(jumpModel,0 <= μ <= 0.0) 
-        @objective( jumpModel, Max,((T-lb)/2) * log(1 / (2*π*σ*σ)) - sum((jumpModel[:ϵ][t] - μ)^2 for t in lb:T) / (2*σ*σ))
+        # TODO: sum(logpdf(Normal(ŷ[t],σ),yValues[t]) for t in 1:T)
+        @objective( jumpModel, Max,(T/2) * log(1 / (2*π*σ*σ)) - sum((jumpModel[:ϵ][t] - μ)^2 for t in 1:T) / (2*σ*σ))
     end
 end
 
@@ -594,7 +596,6 @@ Computes the variance of the SARIMA model's errors.
 
 # Arguments
 - `model::Model`: The SARIMA model.
-- `lb::Int`: The lag from which to compute the variance.
 - `objectiveFunction::String`: The objective function used for fitting the model.
 - `nParameters::Int`: The number of parameters in the model.
 
@@ -602,12 +603,12 @@ Computes the variance of the SARIMA model's errors.
 - `AbstractFloat`: The computed variance.
 
 """
-function computeSARIMAModelVariance(model::Model, lb::Int, objectiveFunction::String, nParameters:: Int)
+function computeSARIMAModelVariance(model::Model, objectiveFunction::String, nParameters:: Int)
     if objectiveFunction == "ml"
         return value(model[:σ])^2
     end
-    nstar = length(value.(model[:ϵ])) - (lb - 1)
-    return sum(value.(model[:ϵ]).^2 )  / ( nstar - nParameters + 1)
+    nstar = length(value.(model[:ϵ][1:end]))
+    return sum(value.(model[:ϵ])[1:end].^2)  / ( nstar - nParameters + 1)
 end
 
 """
@@ -1054,7 +1055,7 @@ function auto(
 
         addNonSeasonalModels!(bestModel, candidateModels, visitedModels, maxp, maxq, maxOrder, allowMean, allowDrift, fixConstant)
         (seasonality > 1) && addSeasonalModels!(bestModel, candidateModels, visitedModels, maxP, maxQ, maxOrder ,allowMean, allowDrift, fixConstant)
-        (seasonality > 1) && addNonSeasonalAndSeasonalModels!(bestModel, candidateModels, visitedModels, maxp, maxq, maxP, maxQ, maxOrder, allowMean, allowDrift, fixConstant)
+        # (seasonality > 1) && addNonSeasonalAndSeasonalModels!(bestModel, candidateModels, visitedModels, maxp, maxq, maxP, maxQ, maxOrder, allowMean, allowDrift, fixConstant)
 
         itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility, showLogs,maxp,maxP)
         showLogs && @info("Iteration $(iterations): Best model found is $(getId(itBestModel)) with $(itBestCriteria) criteria")
