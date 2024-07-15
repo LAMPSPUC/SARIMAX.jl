@@ -1040,6 +1040,8 @@ function auto(
     candidateModels = Vector{SARIMAModel}()
     visitedModels = Dict{String,Dict{String,Any}}()
 
+    offset = computeModelsICOffset(y, exog, d, D, seasonality)
+
     if seasonality == 1
         initialNonSeasonalModels!(candidateModels, y, exog, maxp, d, maxq, allowMean, allowDrift)
     else
@@ -1047,7 +1049,7 @@ function auto(
     end
 
     # Fit models
-    bestCriteria, bestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility,showLogs,maxp,maxP)
+    bestCriteria, bestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility,showLogs,offset)
     
     ITERATION_LIMIT = 100
     iterations = 1
@@ -1057,7 +1059,7 @@ function auto(
         (seasonality > 1) && addSeasonalModels!(bestModel, candidateModels, visitedModels, maxP, maxQ, maxOrder ,allowMean, allowDrift, fixConstant)
         # (seasonality > 1) && addNonSeasonalAndSeasonalModels!(bestModel, candidateModels, visitedModels, maxp, maxq, maxP, maxQ, maxOrder, allowMean, allowDrift, fixConstant)
 
-        itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility, showLogs,maxp,maxP)
+        itBestCriteria, itBestModel = localSearch!(candidateModels, visitedModels, informationCriteriaFunction, objectiveFunction, assertStationarity, assertInvertibility, showLogs, offset)
         showLogs && @info("Iteration $(iterations): Best model found is $(getId(itBestModel)) with $(itBestCriteria) criteria")
         
         (itBestCriteria > bestCriteria) && break
@@ -1174,6 +1176,40 @@ function constantDiffSeriesModelSpecification(y::TimeArray, exog::Union{TimeArra
     fit!(model)
 
     return model
+end
+
+"""
+    computeModelsICOffset(
+        y::TimeArray, 
+        exog::Union{TimeArray,Nothing}, 
+        d::Int, 
+        D::Int, 
+        seasonality::Int
+    )
+
+Computes the offset value for the SARIMA model.
+
+# Arguments
+
+- `y::TimeArray`: The time series data.
+- `exog::Union{TimeArray,Nothing}`: Optional exogenous variables. If `Nothing`, no exogenous variables are used.
+- `d::Int`: The degree of differencing.
+- `D::Int`: The degree of seasonal differencing.
+- `seasonality::Int`: The seasonality period.
+
+# Returns
+- `AbstractFloat`: The computed offset value.
+"""
+function computeModelsICOffset(y::TimeArray, exog::Union{TimeArray,Nothing}, d::Int, D::Int, seasonality::Int)
+    if D == 0
+        model = SARIMA(y, exog, 0, d, 0; allowMean=true)
+    else
+        model = SARIMA(y, exog, 0, 0, 0; P=0, D=D, Q=0, seasonality=seasonality, allowMean=true)
+    end
+    fit!(model)
+    llk_offset = Sarimax.loglike(model)
+    offset = -2 * llk_offset - length(model.y) * log(model.σ²)
+    return  offset 
 end
 
 """
@@ -1346,9 +1382,8 @@ end
         objectiveFunction::String = "mse",
         assertStationarity::Bool = false,
         assertInvertibility::Bool = false,
-        showLogs::Bool = false,
-        maxp::Int=0,
-        maxP::Int=0
+        showLogs::Bool = false
+        icOffset::Fl = 0.0
     )
 
 Performs a local search to find the best SARIMA model among the candidate models.
@@ -1361,8 +1396,7 @@ Performs a local search to find the best SARIMA model among the candidate models
 - `assertStationarity::Bool`: Whether to assert stationarity of the fitted models. Default is false.
 - `assertInvertibility::Bool`: Whether to assert invertibility of the fitted models. Default is false.
 - `showLogs::Bool`: Whether to suppress output. Default is false.
-- `maxp::Int`: The maximum autoregressive order for non-seasonal part. Default is 0.
-- `maxP::Int`: The maximum autoregressive order for seasonal part. Default is 0.
+- `icOffset::Fl`: The offset to be added to the information criteria. Default is 0.0.
 
 # Returns
 - `Tuple{AbstractFloat, Union{SARIMAModel, Nothing}}`: A tuple containing the best criteria value and the corresponding best model found.
@@ -1386,16 +1420,15 @@ function localSearch!(
             assertStationarity::Bool = false,
             assertInvertibility::Bool = false,
             showLogs::Bool = false,
-            maxp::Int=0,
-            maxP::Int=0
-        )   
-    ModelFl = typeofModelElements(candidateModels[1])
+            icOffset::Fl = 0.0
+        )  where Fl <: AbstractFloat
+    ModelFl = Fl#typeofModelElements(candidateModels[1])
     localBestCriteria::ModelFl = Inf
     localBestModel = nothing
     foreach(model ->
         if !isFitted(model) 
             fit!(model;objectiveFunction=objectiveFunction)
-            criteria = informationCriteriaFunction(model)
+            criteria = informationCriteriaFunction(model;offset=icOffset)
             showLogs && @info("Fitted $(getId(model)) with $(criteria)")
             visitedModels[getId(model)] = Dict(
                 "criteria" => criteria

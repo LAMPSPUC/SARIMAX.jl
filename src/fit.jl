@@ -134,7 +134,7 @@ function aicc(model::SarimaxModel; offset::Fl=0.0) where Fl<:AbstractFloat
     # T = length(model.ϵ)
     # return aicc(T, K, loglike(model))
     T = length(model.y) - model.d - model.D * model.seasonality 
-    return aic(model,offset) + ((2*K*K + 2*K) / (T - K - 1))
+    return aic(model; offset=offset) + ((2*K*K + 2*K) / (T - K - 1))
 end
 
 """
@@ -159,5 +159,5 @@ function bic(model::SarimaxModel;offset::Fl=0.0) where Fl<:AbstractFloat
     # T = length(model.ϵ)
     # return bic(T, K, loglike(model))
     T = length(model.y) - model.d - model.D * model.seasonality
-    return aic(model,offset) + K *(log(T) - 2)
+    return aic(model; offset=offset) + K *(log(T) - 2)
 end
