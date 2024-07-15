@@ -266,8 +266,7 @@ Returns the number of hyperparameters of a SARIMA model.
 function getHyperparametersNumber(model::SARIMAModel)
     k = (model.allowMean) ? 1 : 0
     k = (model.allowDrift) ? k + 1 : k
-    initialization = max(model.p, model.P*model.seasonality, model.q, model.Q*model.seasonality)
-    return model.p + model.q + model.P + model.Q + k + initialization
+    return model.p + model.q + model.P + model.Q + k + 1
 end
 
 """
@@ -340,7 +339,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     @variable(mod,-1 <= Φ[1:model.P] <= 1)
     @variable(mod,ϵ[1:T])
 
-    fix.(ϵ[1:lb], 0.0)
+    fix.(ϵ[1:lb-1], 0.0)
     
     if MACoefficientsAreModelParameters(objectiveFunction)
         @variable(mod,θ[i=1:model.q] in Parameter(i))
@@ -609,7 +608,7 @@ function computeSARIMAModelVariance(model::Model, objectiveFunction::String, nPa
         return value(model[:σ])^2
     end
     nstar = length(value.(model[:ϵ][offset:end]))
-    return sum(value.(model[:ϵ])[1:end].^2)  / ( nstar - nParameters + 1)
+    return sum(value.(model[:ϵ])[offset:end].^2)  / ( nstar - nParameters + 1)
 end
 
 """
@@ -819,7 +818,7 @@ function predict(
     errors = deepcopy(model.ϵ)
 
     for _= 1:stepsAhead
-        forecastedValue::ModelFl = model.c + model.trend # *(T+stepsAhead)
+        forecastedValue::ModelFl = 0 + model.c + model.trend # *(T+stepsAhead)
         errorsLength = length(errors)
         if model.p > 0
             # ∑ϕᵢyₜ -i
