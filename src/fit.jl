@@ -86,12 +86,13 @@ function bic(T::Int, K::Int, loglikeVal::Fl) where Fl<:AbstractFloat
 end
 
 """
-    aic(model::SarimaxModel) -> Fl
+    aic(model::SarimaxModel; offset::Fl) -> Fl where Fl<:AbstractFloat
 
 Calculate the Akaike Information Criterion (AIC) for a SARIMAX model.
 
 # Arguments
 - `model::SarimaxModel`: The SARIMAX model for which AIC is calculated.
+- `offset::Fl=0.0`: Offset value to be added to the AIC value.
 
 # Returns
 The AIC value calculated using the number of parameters and log-likelihood value of the model.
@@ -100,7 +101,7 @@ The AIC value calculated using the number of parameters and log-likelihood value
 - Throws a `MissingMethodImplementation` if the `getHyperparametersNumber` method is not implemented for the given model type.
 
 """
-function aic(model::SarimaxModel)
+function aic(model::SarimaxModel; offset::Fl=0.0) where Fl<:AbstractFloat
     !hasHyperparametersMethods(typeof(model)) && throw(MissingMethodImplementation("getHyperparametersNumber"))
     K = Sarimax.getHyperparametersNumber(model)
     # T = length(model.ϵ)
@@ -108,16 +109,17 @@ function aic(model::SarimaxModel)
     # offset = -2 * loglike(model) - length(model.y) * log(model.σ²)
     # return offset + T * log(model.σ²) + 2*K
     T = length(model.y) - model.d - model.D * model.seasonality 
-    return 2*K + T * log(model.σ²)
+    return 2*K + T * log(model.σ²) + offset
 end
 
 """
-    aicc(model::SarimaxModel) -> Fl
+    aicc(model::SarimaxModel; offset::Fl) -> Fl where Fl<:AbstractFloat
 
 Calculate the Corrected Akaike Information Criterion (AICc) for a SARIMAX model.
 
 # Arguments
 - `model::SarimaxModel`: The SARIMAX model for which AICc is calculated.
+- `offset::Fl=0.0`: Offset value to be added to the AICc value.
 
 # Returns
 The AICc value calculated using the number of parameters, sample size, and log-likelihood value of the model.
@@ -126,22 +128,23 @@ The AICc value calculated using the number of parameters, sample size, and log-l
 - Throws a `MissingMethodImplementation` if the `getHyperparametersNumber` method is not implemented for the given model type.
 
 """
-function aicc(model::SarimaxModel)
+function aicc(model::SarimaxModel; offset::Fl=0.0) where Fl<:AbstractFloat
     !hasHyperparametersMethods(typeof(model)) && throw(MissingMethodImplementation("getHyperparametersNumber"))
     K = getHyperparametersNumber(model)
     # T = length(model.ϵ)
     # return aicc(T, K, loglike(model))
     T = length(model.y) - model.d - model.D * model.seasonality 
-    return aic(model) + ((2*K*K + 2*K) / (T - K - 1))
+    return aic(model,offset) + ((2*K*K + 2*K) / (T - K - 1))
 end
 
 """
-    bic(model::SarimaxModel) -> Fl
+    bic(model::SarimaxModel; offset::Fl) -> Fl where Fl<:AbstractFloat
 
 Calculate the Bayesian Information Criterion (BIC) for a SARIMAX model.
 
 # Arguments
 - `model::SarimaxModel`: The SARIMAX model for which BIC is calculated.
+- `offset::Fl=0.0`: Offset value to be added to the BIC value.
 
 # Returns
 The BIC value calculated using the number of parameters, sample size, and log-likelihood value of the model.
@@ -150,11 +153,11 @@ The BIC value calculated using the number of parameters, sample size, and log-li
 - Throws a `MissingMethodImplementation` if the `getHyperparametersNumber` method is not implemented for the given model type.
 
 """
-function bic(model::SarimaxModel)
+function bic(model::SarimaxModel;offset::Fl=0.0) where Fl<:AbstractFloat
     !hasHyperparametersMethods(typeof(model)) && throw(MissingMethodImplementation("getHyperparametersNumber"))
     K = getHyperparametersNumber(model)
     # T = length(model.ϵ)
     # return bic(T, K, loglike(model))
     T = length(model.y) - model.d - model.D * model.seasonality
-    return aic(model) + K *(log(T) - 2)
+    return aic(model,offset) + K *(log(T) - 2)
 end
