@@ -1204,7 +1204,7 @@ function computeModelsICOffset(y::TimeArray, exog::Union{TimeArray,Nothing}, d::
     if D == 0
         model = SARIMA(y, exog, 0, d, 0; allowMean=true)
     else
-        model = SARIMA(y, exog, 0, 0, 0; P=0, D=D, Q=0, seasonality=seasonality, allowMean=true)
+        model = SARIMA(y, exog, 0, d, 0; P=0, D=D, Q=0, seasonality=seasonality, allowMean=true)
     end
     fit!(model)
     llk_offset = Sarimax.loglike(model)
