@@ -266,7 +266,8 @@ Returns the number of hyperparameters of a SARIMA model.
 function getHyperparametersNumber(model::SARIMAModel)
     k = (model.allowMean) ? 1 : 0
     k = (model.allowDrift) ? k + 1 : k
-    return model.p + model.q + model.P + model.Q + k + 1
+    β = isnothing(model.exogCoefficients) ? 0 : length(model.exogCoefficients)
+    return model.p + model.q + model.P + model.Q + k + β + 1
 end
 
 """
@@ -275,6 +276,7 @@ end
         silent::Bool=true,
         optimizer::DataType=Ipopt.Optimizer,
         objectiveFunction::String="mse"
+        automatiExogDifferentiation::Bool=false
     )
 
 Estimate the SARIMA model parameters via non-linear least squares. The resulting optimal
@@ -287,6 +289,7 @@ but it can be changed to the maximum likelihood (ML) by setting the `objectiveFu
 - `silent::Bool`: Whether to suppress solver output. Default is `true`.
 - `optimizer::DataType`: The optimizer to be used for optimization. Default is `Ipopt.Optimizer`.
 - `objectiveFunction::String`: The objective function used for estimation. Default is "mse".
+- `automatiExogDifferentiation::Bool`: Whether to automatically differentiate the exogenous variables. Default is `false`.
 
 # Example
 ```jldoctest
@@ -297,7 +300,7 @@ julia> model = SARIMA(airPassengers,0,1,1;seasonality=12,P=0,D=1,Q=1)
 julia> fit!(model)
 ```
 """
-function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, objectiveFunction::String="mse")
+function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, objectiveFunction::String="mse", automatiExogDifferentiation::Bool=false)
     Fl = typeofModelElements(model)
     isFitted(model) && @info("The model has already been fitted. Overwriting the previous results")
     @assert objectiveFunction ∈ ["mae","mse","ml","bilevel","lasso","ridge"] "The objective function $objectiveFunction is not supported. Please use 'mae', 'mse', 'ml' or 'bilevel'"
@@ -305,9 +308,13 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     diffY = differentiate(model.y,model.d,model.D, model.seasonality)
     
     if !isnothing(model.exog)
-        diffExog, exogMetadata = automaticDifferentiation(model.exog;seasonalPeriod=model.seasonality)
-        model.metadata["exog"] = exogMetadata
-        diffY = TimeSeries.merge(diffY, diffExog)
+        if automatiExogDifferentiation
+            diffExog, exogMetadata = automaticDifferentiation(model.exog;seasonalPeriod=model.seasonality)
+            model.metadata["exog"] = exogMetadata
+            diffY = TimeSeries.merge(diffY, diffExog)
+        else 
+            diffY = TimeSeries.merge(diffY, model.exog)
+        end
     end
 
     T = length(diffY)
