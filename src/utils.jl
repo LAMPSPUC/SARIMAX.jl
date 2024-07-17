@@ -271,6 +271,11 @@ function automaticDifferentiation(
     diffSeriesMetadata = Dict{Symbol, Any}()
     
     for col in colnames(series)
+        if startswith(string(col), "outlier")
+            push!(diffSeriesVector, series[col])
+            diffSeriesMetadata[col] = Dict(:d => 0, :D => 0)
+            continue
+        end
         # Identify seasonal integration order
         y = series[col]
         seasonalIntegrationOrder = 0
@@ -309,6 +314,57 @@ function isConstant(series::TimeArray)
     return length(unique(seriesValues)) == 1
 end
 
+
+"""
+    identifyOutliers(series::Vector{Fl}, method::String="iqr", threshold::Float64=1.5) where Fl<:AbstractFloat
+
+Identify outliers in a time series using the specified method.
+
+# Arguments
+- `series::Vector{Fl}`: The time series data.
+- `method::String="iqr"`: The method used to identify outliers. Supported methods are "iqr".
+- `threshold::Float64=1.5`: The threshold used to identify outliers.
+
+# Returns
+A boolean vector indicating the outliers in the time series.
+"""
+function identifyOutliers(series::Vector{Fl}, method::String="iqr", threshold::Float64=1.5) where Fl<:AbstractFloat
+    if method == "iqr"
+        q1 = quantile(series, 0.25)
+        q3 = quantile(series, 0.75)
+        lower = q1 - threshold * (q3 - q1)
+        upper = q3 + threshold * (q3 - q1)
+        # make a list where 1 indicates an outlier and 0 indicates no outlier
+        return (series .< lower) .| (series .> upper)
+    end
+    throw(ArgumentError("The method $method is not supported"))
+end
+
+"""
+    createOutliersDummies(outliers::BitVector, initialOffset::Int=0, endOffset::Int=0)
+
+Create dummy variables for the outliers in a time series.
+
+# Arguments
+- `outliers::BitVector`: A boolean vector indicating the outliers in the time series.
+- `initialOffset::Int=0`: The initial offset for the dummy variables.
+- `endOffset::Int=0`: The end offset for the dummy variables.
+
+# Returns
+A DataFrame containing dummy variables for the outliers.
+"""
+function createOutliersDummies(outliers::BitVector, initialOffset::Int=0, endOffset::Int=0)
+    outliersDict = Dict()
+    for (i,value) in enumerate(outliers)
+        if value 
+            auxArray = zeros(length(outliers) + initialOffset + endOffset)
+            auxArray[i+initialOffset] = 1
+            outliersDict["outlier_$i"] = auxArray
+        end
+    end
+
+    return DataFrame(outliersDict)
+end
 
 """
     loglikelihood(model::SarimaxModel)

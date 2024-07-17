@@ -276,7 +276,7 @@ end
         silent::Bool=true,
         optimizer::DataType=Ipopt.Optimizer,
         objectiveFunction::String="mse"
-        automatiExogDifferentiation::Bool=false
+        automaticExogDifferentiation::Bool=false
     )
 
 Estimate the SARIMA model parameters via non-linear least squares. The resulting optimal
@@ -289,7 +289,7 @@ but it can be changed to the maximum likelihood (ML) by setting the `objectiveFu
 - `silent::Bool`: Whether to suppress solver output. Default is `true`.
 - `optimizer::DataType`: The optimizer to be used for optimization. Default is `Ipopt.Optimizer`.
 - `objectiveFunction::String`: The objective function used for estimation. Default is "mse".
-- `automatiExogDifferentiation::Bool`: Whether to automatically differentiate the exogenous variables. Default is `false`.
+- `automaticExogDifferentiation::Bool`: Whether to automatically differentiate the exogenous variables. Default is `false`.
 
 # Example
 ```jldoctest
@@ -300,7 +300,7 @@ julia> model = SARIMA(airPassengers,0,1,1;seasonality=12,P=0,D=1,Q=1)
 julia> fit!(model)
 ```
 """
-function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, objectiveFunction::String="mse", automatiExogDifferentiation::Bool=false)
+function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Optimizer, objectiveFunction::String="mse", automaticExogDifferentiation::Bool=false)
     Fl = typeofModelElements(model)
     isFitted(model) && @info("The model has already been fitted. Overwriting the previous results")
     @assert objectiveFunction ∈ ["mae","mse","ml","bilevel","lasso","ridge"] "The objective function $objectiveFunction is not supported. Please use 'mae', 'mse', 'ml' or 'bilevel'"
@@ -308,7 +308,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     diffY = differentiate(model.y,model.d,model.D, model.seasonality)
     
     if !isnothing(model.exog)
-        if automatiExogDifferentiation
+        if automaticExogDifferentiation
             diffExog, exogMetadata = automaticDifferentiation(model.exog;seasonalPeriod=model.seasonality)
             model.metadata["exog"] = exogMetadata
             diffY = TimeSeries.merge(diffY, diffExog)
@@ -341,7 +341,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
         set_parameter_value(mod[:trend], 0.0)
     end
 
-    @variable(mod,-1 <= β[1:nExog] <= 1)
+    @variable(mod, β[1:nExog])
     @variable(mod,-1 <= ϕ[1:model.p] <= 1)
     @variable(mod,-1 <= Φ[1:model.P] <= 1)
     @variable(mod,ϵ[1:T])
@@ -720,6 +720,7 @@ end
         isSimulation::Bool = false,
         displayConfidenceIntervals::Bool = false,
         confidenceLevel::Fl = 0.95
+        automaticExogDifferentiation::Bool=false
     ) where Fl<:AbstractFloat
 
 Predicts the SARIMA model for the next `stepsAhead` periods.
@@ -732,6 +733,7 @@ The resulting forecast is stored within the model in the `forecast` field.
 - `isSimulation::Bool`: Whether to perform a simulation-based forecast (default: false).
 - `displayConfidenceIntervals::Bool`: Whether to display confidence intervals (default: false).
 - `confidenceLevel::Fl`: The confidence level for the confidence intervals (default: 0.95).
+- `automaticExogDifferentiation::Bool`: Whether to automatically differentiate the exogenous variables. Default is `false`.
 
 # Example
 ```julia
@@ -749,11 +751,12 @@ function predict!(
             seed::Int = 1234,
             isSimulation::Bool = false,
             displayConfidenceIntervals::Bool = false,
-            confidenceLevel::Fl = 0.95
+            confidenceLevel::Fl = 0.95,
+            automaticExogDifferentiation::Bool=false
         )   where Fl<:AbstractFloat
     ModelFl = typeofModelElements(model)
     Random.seed!(seed)
-    forecastValues::Vector{ModelFl} = predict(model, stepsAhead, isSimulation)
+    forecastValues::Vector{ModelFl} = predict(model, stepsAhead, isSimulation, automaticExogDifferentiation)
     forecastTimestamps::Vector{TimeType} = buildDatetimes(timestamp(model.y)[end], getproperty(Dates, model.metadata["granularity"])(model.metadata["frequency"]), model.metadata["weekDaysOnly"], stepsAhead)
     if displayConfidenceIntervals
         α::ModelFl = 1 - confidenceLevel
@@ -773,7 +776,8 @@ end
     predict(
         model::SARIMAModel, 
         stepsAhead::Int = 1,
-        isSimulation::Bool = true
+        isSimulation::Bool = true,
+        automaticExogDifferentiation::Bool=false
     )
 
 Predicts the SARIMA model for the next `stepsAhead` periods assuming the model's estimated σ² in case of a simulation.
@@ -783,6 +787,7 @@ Returns the forecasted values.
 - `model::SARIMAModel`: The SARIMA model to make predictions.
 - `stepsAhead::Int`: The number of periods ahead to forecast (default: 1).
 - `isSimulation::Bool`: Whether to perform a simulation-based forecast (default: true).
+- `automaticExogDifferentiation::Bool`: Whether to automatically differentiate the exogenous variables. Default is `false`.
 
 # Example
 ```jldoctest
@@ -798,7 +803,8 @@ julia> forecastedValues = predict(model, stepsAhead=12)
 function predict(
             model::SARIMAModel, 
             stepsAhead::Int=1, 
-            isSimulation::Bool=true
+            isSimulation::Bool=true,
+            automaticExogDifferentiation::Bool=false
         )
     !isFitted(model) && throw(ModelNotFitted())
     ModelFl = typeofModelElements(model)
@@ -806,7 +812,11 @@ function predict(
     diffY = differentiate(model.y,model.d,model.D,model.seasonality)
     valuesExog = []
     if !isnothing(model.exog)
-        diffExog, _ = automaticDifferentiation(model.exog)
+        if automaticExogDifferentiation
+            diffExog, _ = automaticDifferentiation(model.exog)
+        else
+            diffExog = model.exog
+        end
         # Adjust start points
         start_date = min(timestamp(diffY)[1],timestamp(diffExog)[1])
         diffY = from(diffY, start_date)
@@ -815,8 +825,13 @@ function predict(
         valuesExog = values(diffExog)
     end
 
+    if !isnothing(model.exog) && all(startswith.(string.(colnames(model.exog)), "outlier"))
+        nCols = size(valuesExog,2)
+        valuesExog = vcat(valuesExog, zeros(stepsAhead,nCols))
+    end
+
     T = size(diffY,1)
-    exogT = isnothing(model.exog) ? 0 : size(diffExog,1)
+    exogT = isnothing(model.exog) ? 0 : size(valuesExog,1)
     if !isnothing(model.exog) && T + stepsAhead > exogT
         throw(MissingExogenousData())
     end
@@ -931,7 +946,8 @@ end
         objectiveFunction::String = "mse",
         assertStationarity::Bool = false,
         assertInvertibility::Bool = false,
-        showLogs::Bool = false
+        showLogs::Bool = false,
+        outlierDetection::Bool = true
     )
 
 Automatically fits the best SARIMA model according to the specified parameters.
@@ -958,6 +974,7 @@ Automatically fits the best SARIMA model according to the specified parameters.
 - `assertStationarity::Bool`: Whether to assert stationarity of the fitted model. Default is false.
 - `assertInvertibility::Bool`: Whether to assert invertibility of the fitted model. Default is false.
 - `showLogs::Bool`: Whether to suppress output. Default is false.
+- `outlierDetection::Bool`: Whether to perform outlier detection. Default is true.
 
 # References
 - Hyndman, RJ and Khandakar. "Automatic time series forecasting: The forecast package for R." Journal of Statistical Software, 26(3), 2008.
@@ -983,7 +1000,8 @@ function auto(
     objectiveFunction::String = "mse",
     assertStationarity::Bool = false,
     assertInvertibility::Bool = false,
-    showLogs::Bool = false
+    showLogs::Bool = false,
+    outlierDetection::Bool = true
 )
     # Parameter validation
     @assert seasonality >= 1 "seasonality must be greater than 1. Use 1 for non-seasonal models"
@@ -1049,6 +1067,10 @@ function auto(
 
     offset = computeModelsICOffset(y, exog, d, D, seasonality)
 
+    if outlierDetection
+        exog = detectOutliers(y, exog, d, D, seasonality, showLogs)
+    end
+
     if seasonality == 1
         initialNonSeasonalModels!(candidateModels, y, exog, maxp, d, maxq, allowMean, allowDrift)
     else
@@ -1075,6 +1097,7 @@ function auto(
 
         iterations += 1
     end
+    bestModel.exog = exog
     showLogs && @info("The best model found is $(getId(bestModel)) with $(iterations) iterations")
 
     return bestModel
@@ -1217,6 +1240,79 @@ function computeModelsICOffset(y::TimeArray, exog::Union{TimeArray,Nothing}, d::
     llk_offset = Sarimax.loglike(model)
     offset = -2 * llk_offset - length(model.y) * log(model.σ²)
     return  offset 
+end
+
+"""
+    detectOutliers(
+        y::TimeArray, 
+        exog::Union{TimeArray,Nothing}, 
+        d::Int, 
+        D::Int, 
+        seasonality::Int, 
+        showLogs::Bool
+    )
+
+Detects outliers in the time series data and adds them to the exogenous variables.
+
+# Arguments
+
+- `y::TimeArray`: The time series data.
+- `exog::Union{TimeArray,Nothing}`: Optional exogenous variables. If `Nothing`, no exogenous variables are used.
+- `d::Int`: The degree of differencing.
+- `D::Int`: The degree of seasonal differencing.
+- `seasonality::Int`: The seasonality period.
+- `showLogs::Bool`: Whether to suppress output.
+
+# Returns
+- `Union{TimeArray,Nothing}`: The exogenous variables with the detected outliers.
+"""
+function detectOutliers(y::TimeArray, exog::Union{TimeArray,Nothing}, d::Int, D::Int, seasonality::Int, showLogs::Bool)
+    if D == 0
+        model = Sarimax.SARIMA(y, exog, 0, d, 0; allowMean=true)
+    else
+        model = Sarimax.SARIMA(y, exog, 0, d, 0; P=0, D=D, Q=0, seasonality=seasonality, allowMean=true)
+    end
+    fit!(model)
+    residuals = model.ϵ
+
+    # Detect outliers
+    outliers = identifyOutliers(residuals)
+    
+    # check if all elements are false
+    if all(outliers .== 0.0)
+        showLogs && @info("No outliers detected")
+        return exog
+    end
+
+    originalOffset = length(values(y)) - length(residuals)
+    println("Original Offset: ", originalOffset)
+    outliersIndex = findall(outliers .== 1.0) .+ originalOffset 
+    showLogs && @info("Outliers detected at indices: $(outliersIndex)")
+
+    # Add dummies to the exogenous variables
+    if isnothing(exog)
+        # Generate Dummies
+        dummyDataFrame = createOutliersDummies((outliers .== 1.0), originalOffset)
+        dummyDataFrame[!,:date] = copy(timestamp(y))
+        dummyTimeArray = TimeArray(dummyDataFrame, timestamp=:date)
+        exog = dummyTimeArray
+    else
+        startDate = min(timestamp(y)[1], timestamp(exog)[1])
+        filterExogTimestamps = timestamp(exog)[timestamp(exog) .>= startDate]
+        estimationExogLength = length(filterExogTimestamps[filterExogTimestamps .<= timestamp(y)[end]])
+        if estimationExogLength < length(outliers)
+            # cut outliers initial values
+            outliers = outliers[end-estimationExogLength+1:end]
+        end
+        initialOffset = estimationExogLength - length(outliers)
+        endOffset = length(filterExogTimestamps[filterExogTimestamps .> timestamp(y)[end]])
+        dummyDataFrame = createOutliersDummies((outliers .== 1.0), initialOffset, endOffset)
+        dummyDataFrame[!,:date] = copy(filterExogTimestamps)
+        dummyTimeArray = TimeArray(dummyDataFrame, timestamp=:date)
+        exog = merge(exog, dummyTimeArray)
+    end
+
+    return exog
 end
 
 """
