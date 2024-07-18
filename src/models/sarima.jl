@@ -945,10 +945,10 @@ end
         integrationTest::String = "kpss",
         seasonalIntegrationTest::String = "seas",
         objectiveFunction::String = "mse",
-        assertStationarity::Bool = false,
-        assertInvertibility::Bool = false,
+        assertStationarity::Bool = true,
+        assertInvertibility::Bool = true,
         showLogs::Bool = false,
-        outlierDetection::Bool = true
+        outlierDetection::Bool = false
     )
 
 Automatically fits the best SARIMA model according to the specified parameters.
@@ -972,10 +972,10 @@ Automatically fits the best SARIMA model according to the specified parameters.
 - `integrationTest::String`: The integration test to be used for determining the non-seasonal integration order. Default is "kpss".
 - `seasonalIntegrationTest::String`: The integration test to be used for determining the seasonal integration order. Default is "seas".
 - `objectiveFunction::String`: The objective function to be used for model selection. Options are "mse", "ml", or "bilevel". Default is "mse".
-- `assertStationarity::Bool`: Whether to assert stationarity of the fitted model. Default is false.
-- `assertInvertibility::Bool`: Whether to assert invertibility of the fitted model. Default is false.
+- `assertStationarity::Bool`: Whether to assert stationarity of the fitted model. Default is true.
+- `assertInvertibility::Bool`: Whether to assert invertibility of the fitted model. Default is true.
 - `showLogs::Bool`: Whether to suppress output. Default is false.
-- `outlierDetection::Bool`: Whether to perform outlier detection. Default is true.
+- `outlierDetection::Bool`: Whether to perform outlier detection. Default is false.
 
 # References
 - Hyndman, RJ and Khandakar. "Automatic time series forecasting: The forecast package for R." Journal of Statistical Software, 26(3), 2008.
@@ -999,10 +999,10 @@ function auto(
     integrationTest::String = "kpss",
     seasonalIntegrationTest::String = "seas",
     objectiveFunction::String = "mse",
-    assertStationarity::Bool = false,
-    assertInvertibility::Bool = false,
+    assertStationarity::Bool = true,
+    assertInvertibility::Bool = true,
     showLogs::Bool = false,
-    outlierDetection::Bool = true,
+    outlierDetection::Bool = false,
     searchMethod::String = "stepwise"
 )
     # Parameter validation
