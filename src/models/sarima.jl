@@ -383,9 +383,9 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     fittedOriginalLengthDifference = length(values(model.y)) - length(fittedValues)
     initialValuesLength = model.d + model.D*model.seasonality
     initialValuesOffset = fittedOriginalLengthDifference > initialValuesLength ? fittedOriginalLengthDifference - initialValuesLength + 1 : 1
-    initialValues::Vector{Fl} = values(model.y)[initialValuesOffset:fittedOriginalLengthDifference]
+    originalValues = values(model.y)
 
-    integratedFit = integrate(deepcopy(initialValues), deepcopy(fittedValues), model.d, model.D, model.seasonality)
+    integratedFit = [integrate(originalValues[initialValuesOffset+i-1:fittedOriginalLengthDifference+i-1],[fittedValues[i]],model.d,model.D,model.seasonality)[end] for i in 1:length(fittedValues)]
     lengthIntegratedFit = length(integratedFit)
     fitInSample::TimeArray = TimeArray(timestamp(model.y)[end-lengthIntegratedFit+1:end],integratedFit)
 
