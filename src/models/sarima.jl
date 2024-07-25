@@ -530,18 +530,26 @@ function objectiveFunctionDefinition!(jumpModel::Model, model::SARIMAModel, obje
         @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2))
         set_time_limit_sec(jumpModel, 1.0)
     elseif objectiveFunction == "lasso"
-        auxVariables = @variable(jumpModel, [i=1:length(parametersVector)])
-        @constraints(jumpModel, begin
-            [i=1:length(parametersVector)], auxVariables[i] >= 0
-            [i=1:length(parametersVector)], auxVariables[i] >= jumpModel[parametersVector[i]]
-            [i=1:length(parametersVector)], auxVariables[i] >= -jumpModel[parametersVector[i]]
-        end)
-        λ = 1/sqrt(T)
-        @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2) + λ * sum(auxVariables))
+        if length(parametersVector) == 0
+            @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2))
+        else
+            auxVariables = @variable(jumpModel, [i=1:length(parametersVector)])
+            @constraints(jumpModel, begin
+                [i=1:length(parametersVector)], auxVariables[i] >= 0
+                [i=1:length(parametersVector)], auxVariables[i] >= jumpModel[parametersVector[i]]
+                [i=1:length(parametersVector)], auxVariables[i] >= -jumpModel[parametersVector[i]]
+            end)
+            λ = 1/sqrt(T)
+            @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2) + λ * sum(auxVariables))
+        end
     elseif objectiveFunction == "ridge"
-        λ = 1/sqrt(T)
-        auxVariables = @variable(jumpModel, [i=1:length(parametersVector)])
-        @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2) + λ * sum(auxVariables.^2))
+        if length(parametersVector) == 0
+            @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2))
+        else
+            λ = 1/T
+            auxVariables = @variable(jumpModel, [i=1:length(parametersVector)])
+            @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2) + λ * sum(auxVariables.^2))
+        end
     elseif objectiveFunction == "ml"
         # llk(ϵ,μ,σ) = logpdf(Normal(μ,abs(σ)),ϵ)
         # register(jumpModel, :llk, 3, llk, autodiff=true)
@@ -2048,7 +2056,6 @@ Performs a stepwise search to find the best SARIMA model based on the specified 
 # Returns
 - `SARIMAModel`: The best SARIMA model found.
 """
-
 function stepwiseSearch(
     y::TimeArray,
     exog::Union{TimeArray,Nothing},
