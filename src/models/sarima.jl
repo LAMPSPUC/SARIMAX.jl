@@ -522,6 +522,7 @@ Defines the objective function for optimization in the SARIMA model.
 """
 function objectiveFunctionDefinition!(jumpModel::Model, model::SARIMAModel, objectiveFunction::String, T::Int)
     parametersVector::Vector{Symbol} = getParametersVector(model)
+    parametersVectorExtended::Vector{VariableRef} = length(parametersVector) == 0 ? [] : reduce(vcat,[Vector{VariableRef}([jumpModel[el]...]) for el in parametersVector])
     if objectiveFunction == "mse"
         @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2))
     elseif objectiveFunction == "mae"
@@ -530,24 +531,23 @@ function objectiveFunctionDefinition!(jumpModel::Model, model::SARIMAModel, obje
         @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2))
         set_time_limit_sec(jumpModel, 1.0)
     elseif objectiveFunction == "lasso"
-        if length(parametersVector) == 0
+        if length(parametersVectorExtended) == 0
             @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2))
         else
-            auxVariables = @variable(jumpModel, [i=1:length(parametersVector)])
+            auxVariables = @variable(jumpModel, [i=1:length(parametersVectorExtended)])
             @constraints(jumpModel, begin
-                [i=1:length(parametersVector)], auxVariables[i] >= 0
-                [i=1:length(parametersVector)], auxVariables[i] >= jumpModel[parametersVector[i]]
-                [i=1:length(parametersVector)], auxVariables[i] >= -jumpModel[parametersVector[i]]
+                [i=1:length(parametersVectorExtended)], auxVariables[i] >= parametersVectorExtended[i]
+                [i=1:length(parametersVectorExtended)], auxVariables[i] >= -parametersVectorExtended[i]
             end)
             λ = 1/sqrt(T)
             @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2) + λ * sum(auxVariables))
         end
     elseif objectiveFunction == "ridge"
-        if length(parametersVector) == 0
+        if length(parametersVectorExtended) == 0
             @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2))
         else
             λ = 1/T
-            auxVariables = @variable(jumpModel, [i=1:length(parametersVector)])
+            auxVariables = @variable(jumpModel, [i=1:length(parametersVectorExtended)])
             @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2) + λ * sum(auxVariables.^2))
         end
     elseif objectiveFunction == "ml"
