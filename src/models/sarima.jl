@@ -495,9 +495,9 @@ function includeModelConstraints!(jumpModel::Model, yValues::Vector{Fl}, T::Int,
     if objectiveFunction == "mae"
         @variable(jumpModel, ϵ_plus[offset:T] >= 0)
         @variable(jumpModel, ϵ_minus[offset:T] >= 0)
-        @constraint(jumpModel, [t=offset:T], jumpModel[:ϵ][t] == ϵ_plus[t] + ϵ_minus[t])
-        @constraint(jumpModel, [t=offset:T], yValues[t] - jumpModel[:ŷ][t] <= ϵ_plus[t])
-        @constraint(jumpModel, [t=offset:T], jumpModel[:ŷ][t] - yValues[t] <= - ϵ_minus[t])
+        @constraint(jumpModel, [t=offset:T], jumpModel[:ϵ][t] == ϵ_plus[t] - ϵ_minus[t])
+        @constraint(jumpModel, [t=offset:T], jumpModel[:ŷ][t] - yValues[t] <= ϵ_plus[t])
+        @constraint(jumpModel, [t=offset:T], yValues[t] - jumpModel[:ŷ][t] <= ϵ_minus[t])
     else
         @constraint(jumpModel, [t=offset:T], yValues[t] == jumpModel[:ŷ][t] + jumpModel[:ϵ][t])
     end
