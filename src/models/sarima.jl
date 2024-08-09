@@ -378,6 +378,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     objectiveFunctionDefinition!(mod, model, objectiveFunction, T)
 
     optimizeModel!(mod, model, objectiveFunction)
+    @info("The model has been fitted with the objective function $objectiveFunction: $(objective_value(mod))")
 
     fittedValues::Vector{Fl} = Vector(OffsetArrays.no_offset_view(value.(ŷ)))
     fittedOriginalLengthDifference = length(values(model.y)) - length(fittedValues)
@@ -546,9 +547,8 @@ function objectiveFunctionDefinition!(jumpModel::Model, model::SARIMAModel, obje
         if length(parametersVectorExtended) == 0
             @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2))
         else
-            λ = 1/T
-            auxVariables = @variable(jumpModel, [i=1:length(parametersVectorExtended)])
-            @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2) + λ * sum(auxVariables.^2))
+            λ = 1/sqrt(T)
+            @objective(jumpModel, Min, sum(jumpModel[:ϵ].^2) + λ * sum(parametersVectorExtended.^2))
         end
     elseif objectiveFunction == "ml"
         # llk(ϵ,μ,σ) = logpdf(Normal(μ,abs(σ)),ϵ)
