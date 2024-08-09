@@ -378,7 +378,7 @@ function fit!(model::SARIMAModel;silent::Bool=true,optimizer::DataType=Ipopt.Opt
     objectiveFunctionDefinition!(mod, model, objectiveFunction, T)
 
     optimizeModel!(mod, model, objectiveFunction)
-    @info("The model has been fitted with the objective function $objectiveFunction: $(objective_value(mod))")
+    silent || @info("The model has been fitted with the objective function $objectiveFunction: $(objective_value(mod))")
 
     fittedValues::Vector{Fl} = Vector(OffsetArrays.no_offset_view(value.(ŷ)))
     fittedOriginalLengthDifference = length(values(model.y)) - length(fittedValues)
