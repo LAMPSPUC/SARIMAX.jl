@@ -99,6 +99,24 @@
         end
     end
 
+    @testset "isConstant" begin 
+        # Create Dataframe with constant values and one date column
+        df = DataFrame(date = Date(2020,1,1):Day(1):Date(2020,1,10), value = ones(10))
+        dataset = loadDataset(df)
+        @test Sarimax.isConstant(dataset) == true
+
+        # Add a new column with different values
+        df[!,"newCol"] = [ones(5); 2*ones(5)]
+        dataset = loadDataset(df)
+
+        @test Sarimax.isConstant(dataset) == true
+
+        df.value = [ones(5); 2*ones(5)]
+        dataset = loadDataset(df)
+
+        @test Sarimax.isConstant(dataset) == false
+    end
+
     @testset "logLikelihood and loglike" begin
         mutable struct TestModelUtil <: Sarimax.SarimaxModel
         end
