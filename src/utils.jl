@@ -311,7 +311,13 @@ A boolean indicating whether the time series is constant.
 """
 function isConstant(series::TimeArray)
     seriesValues = values(series)
-    return length(unique(seriesValues)) == 1
+    # Iterate over the columns of the time series
+    for i in 1:size(seriesValues, 2)
+        if length(unique(seriesValues[:,i])) == 1
+            return true
+        end   
+    end
+    return false
 end
 
 

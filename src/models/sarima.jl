@@ -1048,10 +1048,44 @@ function auto(
 
     if D < 0
         D = (length(values(y)) < 2*seasonality) ? 0 : selectSeasonalIntegrationOrder(deepcopy(values(y)) ,seasonality,seasonalIntegrationTest)
+
+        # Check if chosen D is viable given the data
+        if D > 0 && !isnothing(exog)
+            diffExog = differentiate(exog, 0, D, seasonality)
+            if isConstant(diffExog)
+                showLogs && @info("The exogenous variables are constant after seasonal differencing")
+                D -= 1
+            end
+        end
+
+        if D > 0
+            diffY = differentiate(y, 0, D, seasonality)
+            if all(ismissing.(values(diffY)))
+                showLogs && @info("The series is missing after seasonal differencing")
+                D -= 1
+            end
+        end
     end
 
     if d < 0 
         d = selectIntegrationOrder(deepcopy(values(y)), maxd, D, seasonality, integrationTest)
+
+        # Check if chosen d is viable given the data
+        if d > 0 && !isnothing(exog)
+            diffExog = differentiate(exog, d, D, seasonality)
+            if isConstant(diffExog)
+                showLogs && @info("The exogenous variables are constant after non-seasonal differencing.")
+                d -= 1
+            end
+        end
+
+        if d > 0
+            diffY = differentiate(y, d, D, seasonality)
+            if all(ismissing.(values(diffY)))
+                showLogs && @info("The series is missing after non-seasonal differencing")
+                d -= 1
+            end
+        end
     end
 
     fixConstant = !isnothing(allowMean) || !isnothing(allowDrift) ||  (d+D > 1)
