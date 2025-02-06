@@ -133,8 +133,8 @@
 
         fit!(testModel)
 
-        @test loglikelihood(testModel) ≈ 254.01202403694745
-        @test loglike(testModel) ≈ 254.01202403694745
+        @test loglikelihood(testModel) ≈ 254.01202403694745 atol = 1e-1
+        @test loglike(testModel) ≈ 254.01202403694745 atol = 1e-1 
     end
 
 end

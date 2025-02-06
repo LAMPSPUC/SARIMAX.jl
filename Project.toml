@@ -3,6 +3,9 @@ uuid = "32cb7113-d955-45ac-bb89-2e20d5d4d2f9"
 authors = ["LuizFDuarte <luizduarte@lampsco.com>"]
 version = "0.1.0"
 
+[compat]
+julia = "1.6 - 1.11"
+
 [deps]
 Alpine = "07493b3f-dabb-5b16-a503-4139292d7dd4"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
