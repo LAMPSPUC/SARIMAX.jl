@@ -157,16 +157,32 @@ function selectSeasonalIntegrationOrder(
     elseif test == "ch"
         return StateSpaceModels.canova_hansen_test(y, seasonality)
     elseif test == "ocsb"
-        py"""
-        import pmdarima as pm
-        import numpy as np
-        def seasonal_diffs(ts, seasonal_period):
-            ts_np = np.array(ts)
-            return pm.arima.nsdiffs(ts_np, m=seasonal_period)
-        """
-        return py"seasonal_diffs"(y, seasonality)
+        try
+            py"""
+            def seasonal_diffs(ts, seasonal_period):
+                ts_np = numpy.array(ts)
+                return pmdarima.arima.nsdiffs(ts_np, m=seasonal_period)
+            """
+            return py"seasonal_diffs"(y, seasonality)
+        catch e
+            println(e)
+            throw(Error("It seems that the pmdarima package is not installed. Please install it to use the 'ocsb' test."))
+        end
+    elseif test == "ocsbR"
+        try
+            @rput y seasonality
+            R"""
+            # Example time series data (replace with your actual data)
+            ts_data <- ts(y, frequency = seasonality)
+            D <- nsdiffs(ts_data)
+            """
+            D::Int = @rget D
+            return D
+        catch e
+            println(e)
+            throw(Error("It seems that the R forecast package is not installed. Please install it to use the 'ocsbR' test."))
+        end
     end
-
     throw(ArgumentError("The test $test is not supported"))
 end
 
@@ -198,6 +214,22 @@ function selectIntegrationOrder(
     ) where Fl<:AbstractFloat
     if test == "kpss"
         return StateSpaceModels.repeated_kpss_test(y, maxd, D, seasonality)
+    elseif test == "kpssR"
+        try
+            @rput y maxd D seasonality
+            R"""
+            diffy <- y
+            if (D > 0 & seasonality > 1) {
+                diffy <- diff(y, differences = D, lag = seasonality)
+            }
+            d <- ndiffs(diffy, test="kpss", max.d = maxd)
+            """
+            d::Int = @rget d
+            return d
+        catch e
+            println(e)
+            throw(Error("It seems that the R forecast package is not installed. Please install it to use the 'kpssR' test."))
+        end
     end
 
     throw(ArgumentError("The test $test is not supported"))
@@ -239,6 +271,11 @@ function automaticDifferentiation(
     diffSeriesMetadata = Dict{Symbol, Any}()
     
     for col in colnames(series)
+        if startswith(string(col), "outlier")
+            push!(diffSeriesVector, series[col])
+            diffSeriesMetadata[col] = Dict(:d => 0, :D => 0)
+            continue
+        end
         # Identify seasonal integration order
         y = series[col]
         seasonalIntegrationOrder = 0
@@ -259,6 +296,81 @@ function automaticDifferentiation(
     return diffSeries, diffSeriesMetadata
 end
 
+"""
+    isConstant(
+        series::TimeArray,
+    )
+
+Check if a time series is constant.
+
+# Arguments
+- `series::TimeArray`: The time series data.
+
+# Returns
+A boolean indicating whether the time series is constant.
+"""
+function isConstant(series::TimeArray)
+    seriesValues = values(series)
+    # Iterate over the columns of the time series
+    for i in 1:size(seriesValues, 2)
+        if length(unique(seriesValues[:,i])) == 1
+            return true
+        end   
+    end
+    return false
+end
+
+
+"""
+    identifyOutliers(series::Vector{Fl}, method::String="iqr", threshold::Float64=1.5) where Fl<:AbstractFloat
+
+Identify outliers in a time series using the specified method.
+
+# Arguments
+- `series::Vector{Fl}`: The time series data.
+- `method::String="iqr"`: The method used to identify outliers. Supported methods are "iqr".
+- `threshold::Float64=1.5`: The threshold used to identify outliers.
+
+# Returns
+A boolean vector indicating the outliers in the time series.
+"""
+function identifyOutliers(series::Vector{Fl}, method::String="iqr", threshold::Float64=1.5) where Fl<:AbstractFloat
+    if method == "iqr"
+        q1 = quantile(series, 0.25)
+        q3 = quantile(series, 0.75)
+        lower = q1 - threshold * (q3 - q1)
+        upper = q3 + threshold * (q3 - q1)
+        # make a list where 1 indicates an outlier and 0 indicates no outlier
+        return (series .< lower) .| (series .> upper)
+    end
+    throw(ArgumentError("The method $method is not supported"))
+end
+
+"""
+    createOutliersDummies(outliers::BitVector, initialOffset::Int=0, endOffset::Int=0)
+
+Create dummy variables for the outliers in a time series.
+
+# Arguments
+- `outliers::BitVector`: A boolean vector indicating the outliers in the time series.
+- `initialOffset::Int=0`: The initial offset for the dummy variables.
+- `endOffset::Int=0`: The end offset for the dummy variables.
+
+# Returns
+A DataFrame containing dummy variables for the outliers.
+"""
+function createOutliersDummies(outliers::BitVector, initialOffset::Int=0, endOffset::Int=0)
+    outliersDict = Dict()
+    for (i,value) in enumerate(outliers)
+        if value 
+            auxArray = zeros(length(outliers) + initialOffset + endOffset)
+            auxArray[i+initialOffset] = 1
+            outliersDict["outlier_$i"] = auxArray
+        end
+    end
+
+    return DataFrame(outliersDict)
+end
 
 """
     loglikelihood(model::SarimaxModel)
