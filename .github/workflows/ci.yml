@@ -44,11 +44,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-julia-
 
-      - name: Debug Installed Packages
-        run: julia -e 'using Pkg; Pkg.status()'
+      - name: Activate Project and Resolve Dependencies
+        run: julia -e 'using Pkg; Pkg.activate("."); Pkg.resolve(); Pkg.instantiate()'
 
-      - name: Resolve Dependencies
-        run: julia -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
+      - name: Debug Installed Packages
+        run: julia -e 'using Pkg; Pkg.activate("."); Pkg.status()'
 
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
