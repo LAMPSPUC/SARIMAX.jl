@@ -1,6 +1,5 @@
 @testset "Fit" begin
-    mutable struct ARIMA_TEST <: Sarimax.SarimaxModel
-    end
+    mutable struct ARIMA_TEST <: Sarimax.SarimaxModel end
     @testset "hasFitMethods" begin
         @test hasFitMethods(SARIMAModel)
         @test !hasFitMethods(ARIMA_TEST)
@@ -39,21 +38,21 @@
     end
 
     @testset "informationCriteriaModel" begin
-        @test_throws MissingMethodImplementation begin 
+        @test_throws MissingMethodImplementation begin
             aic(ARIMA_TEST())
         end
 
-        @test_throws MissingMethodImplementation begin 
+        @test_throws MissingMethodImplementation begin
             aicc(ARIMA_TEST())
         end
 
-        @test_throws MissingMethodImplementation begin 
+        @test_throws MissingMethodImplementation begin
             bic(ARIMA_TEST())
         end
 
         airPassengers = loadDataset(AIR_PASSENGERS)
         airPassengersLog = log.(airPassengers)
-        testModel = SARIMA(airPassengersLog, 3, 0, 1; seasonality=12, P=1, D=1, Q=1)
+        testModel = SARIMA(airPassengersLog, 3, 0, 1; seasonality = 12, P = 1, D = 1, Q = 1)
         fit!(testModel)
         @test aic(testModel) ≈ -1063.1519532534248
         @test aicc(testModel) ≈ -1062.3650680075232
