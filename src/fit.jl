@@ -45,8 +45,8 @@ Calculate the Akaike Information Criterion (AIC) for a given number of parameter
 The AIC value calculated using the formula: AIC = 2*K - 2*loglikeVal.
 
 """
-function aic(K::Int, loglikeVal::Fl) where Fl<:AbstractFloat
-    return  2*K - 2*loglikeVal
+function aic(K::Int, loglikeVal::Fl) where {Fl<:AbstractFloat}
+    return 2 * K - 2 * loglikeVal
 end
 
 """
@@ -63,8 +63,8 @@ Calculate the corrected Akaike Information Criterion (AICc) for a given number o
 The AICc value calculated using the formula: AICc = AIC(K, loglikeVal) + ((2*K*K + 2*K) / (T - K - 1)).
 
 """
-function aicc(T::Int, K::Int, loglikeVal::Fl) where Fl<:AbstractFloat
-    return aic(K, loglikeVal) + ((2*K*K + 2*K) / (T - K - 1))
+function aicc(T::Int, K::Int, loglikeVal::Fl) where {Fl<:AbstractFloat}
+    return aic(K, loglikeVal) + ((2 * K * K + 2 * K) / (T - K - 1))
 end
 
 """
@@ -81,8 +81,8 @@ Calculate the Bayesian Information Criterion (BIC) for a given number of observa
 The BIC value calculated using the formula: BIC = log(T) * K - 2 * loglikeVal.
 
 """
-function bic(T::Int, K::Int, loglikeVal::Fl) where Fl<:AbstractFloat
-    return log(T)*K - 2*loglikeVal
+function bic(T::Int, K::Int, loglikeVal::Fl) where {Fl<:AbstractFloat}
+    return log(T) * K - 2 * loglikeVal
 end
 
 """
@@ -101,15 +101,16 @@ The AIC value calculated using the number of parameters and log-likelihood value
 - Throws a `MissingMethodImplementation` if the `getHyperparametersNumber` method is not implemented for the given model type.
 
 """
-function aic(model::SarimaxModel; offset::Fl=0.0) where Fl<:AbstractFloat
-    !hasHyperparametersMethods(typeof(model)) && throw(MissingMethodImplementation("getHyperparametersNumber"))
+function aic(model::SarimaxModel; offset::Fl = 0.0) where {Fl<:AbstractFloat}
+    !hasHyperparametersMethods(typeof(model)) &&
+        throw(MissingMethodImplementation("getHyperparametersNumber"))
     K = Sarimax.getHyperparametersNumber(model)
     # T = length(model.ϵ)
     # return aic(K, loglike(model))
     # offset = -2 * loglike(model) - length(model.y) * log(model.σ²)
     # return offset + T * log(model.σ²) + 2*K
-    T = length(model.y) - model.d - model.D * model.seasonality 
-    return 2*K + T * log(model.σ²) + offset
+    T = length(model.y) - model.d - model.D * model.seasonality
+    return 2 * K + T * log(model.σ²) + offset
 end
 
 """
@@ -128,13 +129,14 @@ The AICc value calculated using the number of parameters, sample size, and log-l
 - Throws a `MissingMethodImplementation` if the `getHyperparametersNumber` method is not implemented for the given model type.
 
 """
-function aicc(model::SarimaxModel; offset::Fl=0.0) where Fl<:AbstractFloat
-    !hasHyperparametersMethods(typeof(model)) && throw(MissingMethodImplementation("getHyperparametersNumber"))
+function aicc(model::SarimaxModel; offset::Fl = 0.0) where {Fl<:AbstractFloat}
+    !hasHyperparametersMethods(typeof(model)) &&
+        throw(MissingMethodImplementation("getHyperparametersNumber"))
     K = getHyperparametersNumber(model)
     # T = length(model.ϵ)
     # return aicc(T, K, loglike(model))
-    T = length(model.y) - model.d - model.D * model.seasonality 
-    return aic(model; offset=offset) + ((2*K*K + 2*K) / (T - K - 1))
+    T = length(model.y) - model.d - model.D * model.seasonality
+    return aic(model; offset = offset) + ((2 * K * K + 2 * K) / (T - K - 1))
 end
 
 """
@@ -153,11 +155,12 @@ The BIC value calculated using the number of parameters, sample size, and log-li
 - Throws a `MissingMethodImplementation` if the `getHyperparametersNumber` method is not implemented for the given model type.
 
 """
-function bic(model::SarimaxModel;offset::Fl=0.0) where Fl<:AbstractFloat
-    !hasHyperparametersMethods(typeof(model)) && throw(MissingMethodImplementation("getHyperparametersNumber"))
+function bic(model::SarimaxModel; offset::Fl = 0.0) where {Fl<:AbstractFloat}
+    !hasHyperparametersMethods(typeof(model)) &&
+        throw(MissingMethodImplementation("getHyperparametersNumber"))
     K = getHyperparametersNumber(model)
     # T = length(model.ϵ)
     # return bic(T, K, loglike(model))
     T = length(model.y) - model.d - model.D * model.seasonality
-    return aic(model; offset=offset) + K *(log(T) - 2)
+    return aic(model; offset = offset) + K * (log(T) - 2)
 end

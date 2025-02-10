@@ -1,7 +1,7 @@
 @enum Datasets begin
-    AIR_PASSENGERS=1
-    GDPC1=2 
-    NROU=3
+    AIR_PASSENGERS = 1
+    GDPC1 = 2
+    NROU = 3
 end
 
 const AIR_PASSENGERS = instances(Datasets)[1]
@@ -10,9 +10,9 @@ const NROU = instances(Datasets)[3]
 export AIR_PASSENGERS, GDPC1, NROU
 
 datasetsPaths = [
-    joinpath(dirname(@__DIR__()), "datasets", "airpassengers.csv"), 
+    joinpath(dirname(@__DIR__()), "datasets", "airpassengers.csv"),
     joinpath(dirname(@__DIR__()), "datasets", "GDPC1.csv"),
-    joinpath(dirname(@__DIR__()), "datasets", "NROU.csv")
+    joinpath(dirname(@__DIR__()), "datasets", "NROU.csv"),
 ]
 
 
@@ -71,12 +71,12 @@ julia> airPassengers = loadDataset(airPassengersDf)
 
 ```
 """
-function loadDataset(df::DataFrame, showLogs::Bool=false)
+function loadDataset(df::DataFrame, showLogs::Bool = false)
     auxiliarDF = deepcopy(df)
     if !(:date in propertynames(auxiliarDF))
         showLogs && @info("The DataFrame does not have a column named 'date'.")
         showLogs && @info("Creating a date column with the index of the DataFrame")
-        auxiliarDF[!,:date] = [Date(i) for i=1:size(auxiliarDF,1)]
+        auxiliarDF[!, :date] = [Date(i) for i = 1:size(auxiliarDF, 1)]
     end
     y = TimeArray(auxiliarDF, timestamp = :date)
     return y
@@ -90,9 +90,18 @@ end
 
 Splits the time series in training and testing sets. 
 """
-function splitTrainTest(data::TimeArray; trainPercentage::Fl=0.8) where Fl<:AbstractFloat
-    trainingSetEndIndex = floor(Int, trainPercentage*length(data))
-    trainingSet = TimeArray(timestamp(data)[1:trainingSetEndIndex], values(data)[1:trainingSetEndIndex])
-    testingSet = TimeArray(timestamp(data)[trainingSetEndIndex+1:end], values(data)[trainingSetEndIndex+1:end])
+function splitTrainTest(
+    data::TimeArray;
+    trainPercentage::Fl = 0.8,
+) where {Fl<:AbstractFloat}
+    trainingSetEndIndex = floor(Int, trainPercentage * length(data))
+    trainingSet = TimeArray(
+        timestamp(data)[1:trainingSetEndIndex],
+        values(data)[1:trainingSetEndIndex],
+    )
+    testingSet = TimeArray(
+        timestamp(data)[trainingSetEndIndex+1:end],
+        values(data)[trainingSetEndIndex+1:end],
+    )
     return trainingSet, testingSet
 end

@@ -2,7 +2,7 @@ using RCall
 
 export seasonal_diffsR, kpssR
 
-try 
+try
     R"""
     library(forecast)
     """

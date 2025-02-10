@@ -1,9 +1,11 @@
+import Base: copy, deepcopy
+
 function Base.copy(y::TimeArray)
-    return TimeArray(copy(timestamp(y)),copy(values(y)))
+    return TimeArray(copy(timestamp(y)), copy(values(y)))
 end
 
 function Base.deepcopy(y::TimeArray)
-    return TimeArray(deepcopy(timestamp(y)),deepcopy(values(y)))
+    return TimeArray(deepcopy(timestamp(y)), deepcopy(values(y)))
 end
 
 """
@@ -22,11 +24,11 @@ An array of DateTime objects.
 
 """
 function buildDatetimes(
-    startDatetime::T, 
-    granularity::P where P <: Dates.Period,
-    weekDaysOnly::Bool, 
+    startDatetime::T,
+    granularity::P where {P<:Dates.Period},
+    weekDaysOnly::Bool,
     datetimesLength::Int,
-) where T
+) where {T}
     if datetimesLength == 0
         return DateTime[]
     end
@@ -37,7 +39,7 @@ function buildDatetimes(
     currentDatetime = startDatetime
 
     # Loop to generate timestamps based on granularity
-    for _ in 1:datetimesLength
+    for _ = 1:datetimesLength
         if weekDaysOnly && dayofweek(currentDatetime) == 5
             currentDatetime += Dates.Day(3)
         else
@@ -69,15 +71,15 @@ A tuple `(granularity, frequency, weekdays)` where:
 Throws an error if the timestamps do not follow a consistent pattern.
 
 """
-function identifyGranularity(datetimes::Vector{T}) where T
+function identifyGranularity(datetimes::Vector{T}) where {T}
     # Define base units and periods
     baseUnits = [Second(1), Minute(1), Hour(1), Day(1), Week(1)]
     basePeriods = [:Second, :Minute, :Hour, :Day, :Week, :Month, :Year]
-    
+
     unitPeriod = nothing
     diffBetweenTimestamps = nothing
     weekDaysSeries = false
-    
+
     for (i, unit) in enumerate(baseUnits)
         differences = diff(datetimes) ./ unit
         min_difference = minimum(differences)
@@ -86,13 +88,13 @@ function identifyGranularity(datetimes::Vector{T}) where T
         if lessThanOne
             break
         end
-        
+
         # Check if all elements are equal
         regularDistribution = all(differences .== differences[1])
         if regularDistribution
             unitPeriod = basePeriods[i]
             diffBetweenTimestamps = differences[1]
-            
+
             if unit in [Minute(1), Second(1)]
                 if diffBetweenTimestamps < 60
                     break
@@ -128,7 +130,7 @@ function identifyGranularity(datetimes::Vector{T}) where T
                 end
             end
         end
- 
+
         amplitude = maximum(differences) - min_difference
         if amplitude < 1
             unitPeriod = basePeriods[i]
@@ -152,10 +154,14 @@ function identifyGranularity(datetimes::Vector{T}) where T
         elseif diffBetweenTimestamps % 4 == 0
             unitPeriod = :Month
             diffBetweenTimestamps = diffBetweenTimestamps / 4
-        end 
+        end
     end
-    
-    return (granularity=unitPeriod, frequency=diffBetweenTimestamps, weekdays=weekDaysSeries)
+
+    return (
+        granularity = unitPeriod,
+        frequency = diffBetweenTimestamps,
+        weekdays = weekDaysSeries,
+    )
 end
 
 """
@@ -171,7 +177,7 @@ Merge multiple `TimeArray` objects into a single `TimeArray`. The function align
 A `TimeArray` object representing the merged time series.
 
 """
-function merge(timeArrayVector::Vector{TimeArray},modelFl::DataType=Float64)
+function merge(timeArrayVector::Vector{TimeArray}, modelFl::DataType = Float64)
     if length(timeArrayVector) == 0
         return TimeArray(DateTime[], [])
     end
@@ -192,19 +198,18 @@ function merge(timeArrayVector::Vector{TimeArray},modelFl::DataType=Float64)
 
     newTimeArrayVector = []
     for ta in timeArrayVector
-        newTimeArray = from(ta,initialTimestamp)
-        newTimeArray = to(newTimeArray,finalTimestamp)
-        push!(newTimeArrayVector,newTimeArray)
+        newTimeArray = from(ta, initialTimestamp)
+        newTimeArray = to(newTimeArray, finalTimestamp)
+        push!(newTimeArrayVector, newTimeArray)
     end
 
-    auxiliarDf = DataFrame((:timestamp=>timestamp(newTimeArrayVector[1])))
+    auxiliarDf = DataFrame((:timestamp => timestamp(newTimeArrayVector[1])))
     for ta in newTimeArrayVector
         # Add a column with ta colname and values
         colname = colnames(ta)[1]
         valuesTa::Vector{modelFl} = values(ta)
-        auxiliarDf[!,colname] = valuesTa
+        auxiliarDf[!, colname] = valuesTa
     end
 
-    return TimeArray(auxiliarDf, timestamp=:timestamp)
+    return TimeArray(auxiliarDf, timestamp = :timestamp)
 end
-

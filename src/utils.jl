@@ -27,13 +27,13 @@ julia> airPassengers = loadDataset(AIR_PASSENGERS)
 julia> stationaryAirPassengers = differentiate(airPassengers, d=1, D=1, s=12)
 ```
 """
-function differentiate(series::TimeArray,d::Int=0, D::Int=0, s::Int=1)
+function differentiate(series::TimeArray, d::Int = 0, D::Int = 0, s::Int = 1)
     Fl = eltype(values(series))
     copiedValues::Vector{Fl} = values(series)
     coeffs = differentiatedCoefficients(d, D, s, Fl)
     lenCoeffs = length(coeffs)
     diffValues::Vector{Fl} = Vector{Fl}()
-    for i in lenCoeffs:length(copiedValues)
+    for i = lenCoeffs:length(copiedValues)
         y_diff = coeffs'copiedValues[i:-1:i-lenCoeffs+1]
         push!(diffValues, y_diff)
     end
@@ -55,19 +55,19 @@ Compute the coefficients for differentiating a time series.
 # Returns
 - `coeffs::Vector{AbstractFloat}`: Coefficients for differentiation.
 """
-function differentiatedCoefficients(d::Int, D::Int, s::Int, Fl::DataType=Float64)
+function differentiatedCoefficients(d::Int, D::Int, s::Int, Fl::DataType = Float64)
     # Calculate the length of the resulting coefficients array
     lenCoeffs = d + D * s + 1
     # Initialize an array to store the coefficients
     coeffs = zeros(Fl, lenCoeffs)
     # Calculate the binomial coefficients
-    binomialCoeffsd = [binomial(d, i) for i in 0:d]
-    binomialCoeffsD = [binomial(D, j) for j in 0:D]
+    binomialCoeffsd = [binomial(d, i) for i = 0:d]
+    binomialCoeffsD = [binomial(D, j) for j = 0:D]
 
     # Calculate the coefficients
-    for i in 0:d
-        for j in 0:D
-            coeffs[i + j * s + 1] = (-1)^i * binomialCoeffsd[i + 1] * (-1)^j * binomialCoeffsD[j + 1]
+    for i = 0:d
+        for j = 0:D
+            coeffs[i+j*s+1] = (-1)^i * binomialCoeffsd[i+1] * (-1)^j * binomialCoeffsD[j+1]
         end
     end
 
@@ -90,7 +90,13 @@ Converts a differentiated time series back to its original scale.
 # Returns
 - `origSeries::Vector{Fl}`: Time series in the original scale.
 """
-function integrate(initialValues::Vector{Fl}, diffSeries::Vector{Fl}, d::Int, D::Int, s::Int) where Fl<:AbstractFloat
+function integrate(
+    initialValues::Vector{Fl},
+    diffSeries::Vector{Fl},
+    d::Int,
+    D::Int,
+    s::Int,
+) where {Fl<:AbstractFloat}
     # Get the coefficients for differentiation
     # initialValues = b
     # diffSeries = a
@@ -100,32 +106,32 @@ function integrate(initialValues::Vector{Fl}, diffSeries::Vector{Fl}, d::Int, D:
     # Fl = Float64
     coeffs = differentiatedCoefficients(d, D, s, Fl)
     lenCoeffs = length(coeffs)
-    
+
     # Calculate the length of the original series
-    lenSeries = length(diffSeries) + d + D*s
-    
+    lenSeries = length(diffSeries) + d + D * s
+
     # Initialize an array to store the original series
     origSeries = zeros(Fl, lenSeries)
-    
+
     # Copy the initial values to the original series
     origSeries[1:length(initialValues)] .= initialValues
     initialOffset = length(initialValues)
-    
+
     # Iterate through the differentiated series and compute the original series
-    for i in 1:length(diffSeries)
+    for i = 1:length(diffSeries)
         # Calculate the value at the current index
         y_t::Fl = 0.0
         y_t += diffSeries[i]
         # y_t += (-1) * coeffs[2:end]'origSeries[initialOffset+i-1:-1:initialOffset+i-lenCoeffs+1]
-        for j in 2:lenCoeffs
+        for j = 2:lenCoeffs
             y_t += (-1) * coeffs[j] * origSeries[initialOffset+i-(j-1)]
         end
-        
+
         # Add contributions from past observations
         # origSeries[initialOffset+i] -= coeffs[2:end]'origSeries[initialOffset+i-1:-1:initialOffset+i-lenCoeffs+1]
         origSeries[initialOffset+i] = y_t
     end
-    
+
     return origSeries
 end
 
@@ -148,10 +154,10 @@ Throws an ArgumentError if the specified test is not supported.
 
 """
 function selectSeasonalIntegrationOrder(
-            y::Vector{Fl},
-            seasonality::Int,
-            test::String
-        ) where Fl<:AbstractFloat
+    y::Vector{Fl},
+    seasonality::Int,
+    test::String,
+) where {Fl<:AbstractFloat}
     if test == "seas"
         return StateSpaceModels.seasonal_strength_test(y, seasonality)
     elseif test == "ch"
@@ -168,7 +174,11 @@ function selectSeasonalIntegrationOrder(
             return seasonal_diffs(y, seasonality)
         catch e
             println(e)
-            throw(Error("It seems that the pmdarima package is not installed. Please install it to use the 'ocsb' test."))
+            throw(
+                Error(
+                    "It seems that the pmdarima package is not installed. Please install it to use the 'ocsb' test.",
+                ),
+            )
         end
     elseif test == "ocsbR"
         try
@@ -181,7 +191,11 @@ function selectSeasonalIntegrationOrder(
             return seasonal_diffsR(y, seasonality)
         catch e
             println(e)
-            throw(Error("It seems that the R forecast package is not installed. Please install it to use the 'ocsbR' test."))
+            throw(
+                Error(
+                    "It seems that the R forecast package is not installed. Please install it to use the 'ocsbR' test.",
+                ),
+            )
         end
     end
     throw(ArgumentError("The test $test is not supported"))
@@ -207,12 +221,12 @@ Throws an ArgumentError if the specified test is not supported.
 
 """
 function selectIntegrationOrder(
-        y::Vector{Fl},
-        maxd::Int,
-        D::Int,
-        seasonality::Int,
-        test::String
-    ) where Fl<:AbstractFloat
+    y::Vector{Fl},
+    maxd::Int,
+    D::Int,
+    seasonality::Int,
+    test::String,
+) where {Fl<:AbstractFloat}
     if test == "kpss"
         return StateSpaceModels.repeated_kpss_test(y, maxd, D, seasonality)
     elseif test == "kpssR"
@@ -223,11 +237,15 @@ function selectIntegrationOrder(
                 @warn "Using the 'kpss' test instead."
                 return StateSpaceModels.repeated_kpss_test(y, maxd, D, seasonality)
             end
-            
+
             return kpssR(y, maxd, D, seasonality)
         catch e
             println(e)
-            throw(Error("It seems that the R forecast package is not installed. Please install it to use the 'kpssR' test."))
+            throw(
+                Error(
+                    "It seems that the R forecast package is not installed. Please install it to use the 'kpssR' test.",
+                ),
+            )
         end
     end
 
@@ -257,18 +275,18 @@ Throws an AssertionError if invalid test options or seasonal period are provided
 """
 function automaticDifferentiation(
     series::TimeArray;
-    seasonalPeriod::Int=1,
-    seasonalIntegrationTest::String="seas",
-    integrationTest::String="kpss",
-    maxd::Int=2
+    seasonalPeriod::Int = 1,
+    seasonalIntegrationTest::String = "seas",
+    integrationTest::String = "kpss",
+    maxd::Int = 2,
 )
     @assert integrationTest ∈ ["kpss"]
     @assert seasonalIntegrationTest ∈ ["seas", "ch"]
-    @assert seasonalPeriod ≥ 1 
+    @assert seasonalPeriod ≥ 1
 
     diffSeriesVector::Array{TimeArray} = []
-    diffSeriesMetadata = Dict{Symbol, Any}()
-    
+    diffSeriesMetadata = Dict{Symbol,Any}()
+
     for col in colnames(series)
         if startswith(string(col), "outlier")
             push!(diffSeriesVector, series[col])
@@ -279,16 +297,28 @@ function automaticDifferentiation(
         y = series[col]
         seasonalIntegrationOrder = 0
         if seasonalPeriod ≠ 1
-            seasonalIntegrationOrder = selectSeasonalIntegrationOrder(values(y), seasonalPeriod, seasonalIntegrationTest)
+            seasonalIntegrationOrder = selectSeasonalIntegrationOrder(
+                values(y),
+                seasonalPeriod,
+                seasonalIntegrationTest,
+            )
         end
 
         # Identify integration order
-        integrationOrder = Sarimax.selectIntegrationOrder(values(y), maxd, seasonalIntegrationOrder, seasonalPeriod, integrationTest)
-        
+        integrationOrder = Sarimax.selectIntegrationOrder(
+            values(y),
+            maxd,
+            seasonalIntegrationOrder,
+            seasonalPeriod,
+            integrationTest,
+        )
+
         # Apply the integration orders to differentiate the time series
-        diffSeriesAux = differentiate(y, integrationOrder, seasonalIntegrationOrder, seasonalPeriod)
+        diffSeriesAux =
+            differentiate(y, integrationOrder, seasonalIntegrationOrder, seasonalPeriod)
         push!(diffSeriesVector, diffSeriesAux)
-        diffSeriesMetadata[col] = Dict(:d => integrationOrder, :D => seasonalIntegrationOrder)
+        diffSeriesMetadata[col] =
+            Dict(:d => integrationOrder, :D => seasonalIntegrationOrder)
     end
 
     diffSeries = merge(diffSeriesVector)
@@ -311,10 +341,10 @@ A boolean indicating whether the time series is constant.
 function isConstant(series::TimeArray)
     seriesValues = values(series)
     # Iterate over the columns of the time series
-    for i in 1:size(seriesValues, 2)
-        if length(unique(seriesValues[:,i])) == 1
+    for i = 1:size(seriesValues, 2)
+        if length(unique(seriesValues[:, i])) == 1
             return true
-        end   
+        end
     end
     return false
 end
@@ -333,7 +363,11 @@ Identify outliers in a time series using the specified method.
 # Returns
 A boolean vector indicating the outliers in the time series.
 """
-function identifyOutliers(series::Vector{Fl}, method::String="iqr", threshold::Float64=1.5) where Fl<:AbstractFloat
+function identifyOutliers(
+    series::Vector{Fl},
+    method::String = "iqr",
+    threshold::Float64 = 1.5,
+) where {Fl<:AbstractFloat}
     if method == "iqr"
         q1 = quantile(series, 0.25)
         q3 = quantile(series, 0.75)
@@ -358,10 +392,14 @@ Create dummy variables for the outliers in a time series.
 # Returns
 A DataFrame containing dummy variables for the outliers.
 """
-function createOutliersDummies(outliers::BitVector, initialOffset::Int=0, endOffset::Int=0)
+function createOutliersDummies(
+    outliers::BitVector,
+    initialOffset::Int = 0,
+    endOffset::Int = 0,
+)
     outliersDict = Dict()
-    for (i,value) in enumerate(outliers)
-        if value 
+    for (i, value) in enumerate(outliers)
+        if value
             auxArray = zeros(length(outliers) + initialOffset + endOffset)
             auxArray[i+initialOffset] = 1
             outliersDict["outlier_$i"] = auxArray
@@ -396,7 +434,7 @@ function loglikelihood(model::SarimaxModel)
     !hasFitMethods(typeof(model)) && throw(MissingMethodImplementation("fit!"))
     !isFitted(model) && throw(ModelNotFitted())
     T = length(model.ϵ)
-    return -0.5 * (T * log(2π) + T * log(model.σ²) + sum(model.ϵ.^2 ./ model.σ²))
+    return -0.5 * (T * log(2π) + T * log(model.σ²) + sum(model.ϵ .^ 2 ./ model.σ²))
 end
 
 """
