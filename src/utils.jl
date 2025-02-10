@@ -158,26 +158,27 @@ function selectSeasonalIntegrationOrder(
         return StateSpaceModels.canova_hansen_test(y, seasonality)
     elseif test == "ocsb"
         try
-            py"""
-            def seasonal_diffs(ts, seasonal_period):
-                ts_np = numpy.array(ts)
-                return pmdarima.arima.nsdiffs(ts_np, m=seasonal_period)
-            """
-            return py"seasonal_diffs"(y, seasonality)
+            if !("PyCall" ∈ keys(Pkg.project().dependencies))
+                # Warning message
+                @warn "The PyCall package is not installed. Please install it to use the 'ocsb' test."
+                @warn "Using the 'seas' test instead."
+                return StateSpaceModels.seasonal_strength_test(y, seasonality)
+            end
+
+            return seasonal_diffs(y, seasonality)
         catch e
             println(e)
             throw(Error("It seems that the pmdarima package is not installed. Please install it to use the 'ocsb' test."))
         end
     elseif test == "ocsbR"
         try
-            @rput y seasonality
-            R"""
-            # Example time series data (replace with your actual data)
-            ts_data <- ts(y, frequency = seasonality)
-            D <- nsdiffs(ts_data)
-            """
-            D::Int = @rget D
-            return D
+            if !("RCall" ∈ keys(Pkg.project().dependencies))
+                # Warning message
+                @warn "The RCall package is not installed. Please install it to use the 'ocsbR' test."
+                @warn "Using the 'seas' test instead."
+                return StateSpaceModels.seasonal_strength_test(y, seasonality)
+            end
+            return seasonal_diffsR(y, seasonality)
         catch e
             println(e)
             throw(Error("It seems that the R forecast package is not installed. Please install it to use the 'ocsbR' test."))
@@ -216,16 +217,14 @@ function selectIntegrationOrder(
         return StateSpaceModels.repeated_kpss_test(y, maxd, D, seasonality)
     elseif test == "kpssR"
         try
-            @rput y maxd D seasonality
-            R"""
-            diffy <- y
-            if (D > 0 & seasonality > 1) {
-                diffy <- diff(y, differences = D, lag = seasonality)
-            }
-            d <- ndiffs(diffy, test="kpss", max.d = maxd)
-            """
-            d::Int = @rget d
-            return d
+            if !("RCall" ∈ keys(Pkg.project().dependencies))
+                # Warning message
+                @warn "The RCall package is not installed. Please install it to use the 'kpssR' test."
+                @warn "Using the 'kpss' test instead."
+                return StateSpaceModels.repeated_kpss_test(y, maxd, D, seasonality)
+            end
+            
+            return kpssR(y, maxd, D, seasonality)
         catch e
             println(e)
             throw(Error("It seems that the R forecast package is not installed. Please install it to use the 'kpssR' test."))

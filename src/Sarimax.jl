@@ -8,41 +8,25 @@ using CSV
 using DataFrames
 using Dates
 using Distributions
-using HiGHS
 using Ipopt
 using JuMP
 using LinearAlgebra
 using MathOptInterface
 using OffsetArrays
 using Optim
+using Pkg
 using Random
-using SCIP
+using Requires
 using StateSpaceModels
 using Statistics
 using TimeSeries
-using PyCall
-using Conda
-using RCall
-# using GLMNet
-# using Lasso
 
 abstract type SarimaxModel end
 
-try
-    pyimport("pmdarima")
-    pyimport("numpy")
-catch e
-    @warn "Could not load python libraries. Please make sure you have numpy and pmdarima installed."
+function __init__()
+    @require PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0" include("python_init.jl")
+    @require RCall = "6f49c342-dc21-5d91-9882-a32aef131414" include("r_init.jl")
 end
-
-try
-    R"""
-    library(forecast)
-    """
-catch e
-    @warn "Could not load R libraries. Please make sure you have forecast installed."
-end
-
 
 include("datasets.jl")
 include("datetime_utils.jl")

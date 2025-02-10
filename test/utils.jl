@@ -77,6 +77,11 @@
         @test_throws ArgumentError Sarimax.selectIntegrationOrder(values(airPassengers), 2, 0, 12,"hegy")
     end
 
+    @testset "selectIntegrationOrderR" begin
+        airPassengers = loadDataset(AIR_PASSENGERS)
+        @test Sarimax.selectIntegrationOrder(values(airPassengers), 2, 0, 12,"kpssR") == 1
+    end
+
     @testset "automaticDifferentiation" begin 
         gdpc1Data = loadDataset(GDPC1)
         nrouData = loadDataset(NROU)
