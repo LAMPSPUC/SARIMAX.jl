@@ -54,6 +54,16 @@
                 @test values(NROUData)[1] == 5.2550525665283200
                 @test values(NROUData)[end] == 4.2031234672198900
             end
+
+            @testset "Date in not the first column" begin
+                df = DataFrame(Datas = ["2020-01-01", "2020-01-02", "2020-01-03"], Values = [1, 2, 3])
+                data = loadDataset(df, true)
+                println(data)
+                println(values(data))
+                @test size(data, 1) == 3
+                @test values(data)[1,2] == 1
+                @test values(data)[end,2] == 3
+            end
         end
     end
 
