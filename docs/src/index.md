@@ -21,5 +21,5 @@ Pkg.add("SARIMAX")
 
 Auto SARIMA implementation
 ```@docs
-auto
+Sarimax.auto
 ```
