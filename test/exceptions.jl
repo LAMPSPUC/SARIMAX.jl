@@ -1,61 +1,79 @@
 using Test
 
-@testset "Sarimax Exception Tests" begin
-    @test_throws ModelNotFitted begin
-        # Code that should throw ModelNotFitted
-        try
-            throw(ModelNotFitted())
-        catch e
-            println(e)
-            @test e isa ModelNotFitted
-            throw(ModelNotFitted())
-        end
+@testset "Sarimax Exceptions" begin
+    @testset "ModelNotFitted" begin
+        e = ModelNotFitted()
+        @test e isa ModelNotFitted
+
+        output = sprint(showerror, e)
+        @test output == "The model has not been fitted yet. Please run fit!(model)"
+
+        # Test error message
+        buf = IOBuffer()
+        showerror(buf, e)
+        @test String(take!(buf)) == "The model has not been fitted yet. Please run fit!(model)"
+        @test_throws ModelNotFitted throw(ModelNotFitted())
     end
 
-    @test_throws MissingMethodImplementation begin
-        # Code that should throw MissingMethodImplementation
-        try
-            throw(MissingMethodImplementation("method"))
-        catch e
-            println(e)
-            @test e isa MissingMethodImplementation
-            @test e.method == "method"
-            throw(MissingMethodImplementation("method"))
-        end
+    @testset "MissingMethodImplementation" begin
+        method_name = "test_method"
+        e = MissingMethodImplementation(method_name)
+        @test e isa MissingMethodImplementation
+        @test e.method == method_name
+
+        # Test that the error message is correctly printed
+        output = sprint(showerror, e)
+        @test output == "The model does not implement the test_method method."
+
+        # Test error message
+        buf = IOBuffer()
+        showerror(buf, e)
+        @test String(take!(buf)) == "The model does not implement the test_method method."
+        @test_throws MissingMethodImplementation throw(MissingMethodImplementation(method_name))
+
     end
 
-    @test_throws InconsistentDatePattern begin
-        # Code that should throw InconsistentDatePattern
-        try
-            throw(InconsistentDatePattern())
-        catch e
-            println(e)
-            @test e isa InconsistentDatePattern
-            throw(InconsistentDatePattern())
-        end
+    @testset "InconsistentDatePattern" begin
+        e = InconsistentDatePattern()
+        @test e isa InconsistentDatePattern
+
+        output = sprint(showerror, e)
+        @test output == "The timestamps do not follow a consistent pattern."
+
+        # Test error message
+        buf = IOBuffer()
+        showerror(buf, e)
+        @test String(take!(buf)) == "The timestamps do not follow a consistent pattern."
+        @test_throws InconsistentDatePattern throw(InconsistentDatePattern())
     end
 
-    @test_throws MissingExogenousData begin
-        # Code that should throw MissingExogenousData
-        try
-            throw(MissingExogenousData())
-        catch e
-            println(e)
-            @test e isa MissingExogenousData
-            throw(MissingExogenousData())
-        end
+    @testset "MissingExogenousData" begin
+        e = MissingExogenousData()
+        @test e isa MissingExogenousData
+
+        output = sprint(showerror, e)
+        @test output == "There is no exogenous data to forecast the horizon requested"
+
+        # Test error message
+        buf = IOBuffer()
+        showerror(buf, e)
+        @test String(take!(buf)) == "There is no exogenous data to forecast the horizon requested"
+        @test_throws MissingExogenousData throw(MissingExogenousData())
     end
 
-    @test_throws InvalidParametersCombination begin
-        # Code that should throw InvalidParametersCombination
-        try
-            throw(InvalidParametersCombination("msg"))
-        catch e
-            println(e)
-            @test e isa InvalidParametersCombination
-            @test e.msg == "msg"
-            throw(InvalidParametersCombination("msg"))
-        end
-    end
+    @testset "InvalidParametersCombination" begin
+        msg = "Test error message"
+        e = InvalidParametersCombination(msg)
+        @test e isa InvalidParametersCombination
+        @test e.msg == msg
 
+        output = sprint(showerror, e)
+        @test output == "The parameters provided are invalid for the model \n$msg"
+        
+        # Test error message
+        buf = IOBuffer()
+        showerror(buf, e)
+        @test String(take!(buf)) == "The parameters provided are invalid for the model \n$msg"
+        @test_throws InvalidParametersCombination throw(InvalidParametersCombination(msg))
+    end
 end
