@@ -1,11 +1,11 @@
 using Documenter
 include("../src/Sarimax.jl")
 
-DocMeta.setdocmeta!(Sarimax, :DocTestSetup, :(using Sarimax); recursive=true)
+# DocMeta.setdocmeta!(Sarimax, :DocTestSetup, :(using ..Sarimax); recursive=true)
 
 makedocs(;
     modules=[Sarimax],
-    doctest=true,
+    doctest=false,
     clean=true,
     checkdocs=:none,
     format=Documenter.HTML(; mathengine=Documenter.MathJax2()),

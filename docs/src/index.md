@@ -18,3 +18,8 @@ This package is registered so you can simply `add` it using Julia's `Pkg` manage
 using Pkg
 Pkg.add("SARIMAX")
 ```
+
+Auto SARIMA implementation
+```@docs
+auto
+```
