@@ -1,8 +1,8 @@
 """
     differentiate(
         series::TimeArray,
-        d::Int=0, 
-        D::Int=0, 
+        d::Int=0,
+        D::Int=0,
         s::Int=1
     )
 
@@ -171,7 +171,7 @@ function selectSeasonalIntegrationOrder(
                 return StateSpaceModels.seasonal_strength_test(y, seasonality)
             end
 
-            return seasonal_diffs(y, seasonality)
+            return Sarimax.seasonal_diffs(y, seasonality)
         catch e
             println(e)
             throw(
@@ -188,7 +188,7 @@ function selectSeasonalIntegrationOrder(
                 @warn "Using the 'seas' test instead."
                 return StateSpaceModels.seasonal_strength_test(y, seasonality)
             end
-            return seasonal_diffsR(y, seasonality)
+            return Sarimax.seasonal_diffsR(y, seasonality)
         catch e
             println(e)
             throw(
@@ -238,11 +238,11 @@ function selectIntegrationOrder(
                 return StateSpaceModels.repeated_kpss_test(y, maxd, D, seasonality)
             end
 
-            return kpssR(y, maxd, D, seasonality)
+            return Sarimax.kpssR(y, maxd, D, seasonality)
         catch e
             println(e)
             throw(
-                Error(
+                ArgumentError(
                     "It seems that the R forecast package is not installed. Please install it to use the 'kpssR' test.",
                 ),
             )
@@ -368,6 +368,10 @@ function identifyOutliers(
     method::String = "iqr",
     threshold::Float64 = 1.5,
 ) where {Fl<:AbstractFloat}
+    if length(series) == 0
+        return BitVector()
+    end
+    
     if method == "iqr"
         q1 = quantile(series, 0.25)
         q3 = quantile(series, 0.75)
