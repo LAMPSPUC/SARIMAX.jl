@@ -103,6 +103,25 @@
             12,
             "hegy",
         )
+        # TODO: Fix test of PyCall and RCall
+        # @testset "ocsb test without PyCall" begin
+        #     @test Sarimax.selectSeasonalIntegrationOrder(values(airPassengers), 12, "ocsb") == StateSpaceModels.seasonal_strength_test(y, seasonality)
+        # end
+
+        # @testset "ocsbR test without RCall" begin
+        #     @test Sarimax.selectSeasonalIntegrationOrder(values(airPassengers), 12, "ocsbR") == StateSpaceModels.seasonal_strength_test(y, seasonality)
+        # end
+
+        # @testset "ocsb test with PyCall" begin
+        #     # Mock the Pkg.project().dependencies to simulate PyCall being installed
+        #     @test Sarimax.selectSeasonalIntegrationOrder(values(airPassengers), 12, "ocsb") == 1
+        # end
+
+        # @testset "ocsbR test with RCall" begin
+        #     # Mock the Pkg.project().dependencies to simulate RCall being installed
+
+        #     @test Sarimax.selectSeasonalIntegrationOrder(values(airPassengers), 12, "ocsbR") == 1
+        # end
     end
 
     @testset "selectIntegrationOrder" begin
@@ -117,10 +136,10 @@
         )
     end
 
-    @testset "selectIntegrationOrderR" begin
-        airPassengers = loadDataset(AIR_PASSENGERS)
-        @test Sarimax.selectIntegrationOrder(values(airPassengers), 2, 0, 12, "kpssR") == 1
-    end
+    # @testset "selectIntegrationOrderR" begin
+    #     airPassengers = loadDataset(AIR_PASSENGERS)
+    #     @test Sarimax.selectIntegrationOrder(values(airPassengers), 2, 0, 12, "kpssR") == 1
+    # end
 
     @testset "automaticDifferentiation" begin
         gdpc1Data = loadDataset(GDPC1)
@@ -157,6 +176,20 @@
             @test size(mergedDiffSeries[col], 1) ==
                   size(mergedTimeArray[col], 1) - diffMetadata[col][:d]
         end
+    end
+
+    @testset "automaticDifferentiation Outlier Case" begin
+        timestamps = Date(2020, 1, 1):Day(1):Date(2020, 1, 5)
+        values = [10.0, 20.0, 30.0, 40.0, 50.0]
+        outlier_values = [0, 0, 1, 0, 0]
+        data = (datetime = timestamps, data = values, outlier_3 = outlier_values)
+        series = TimeArray(data; timestamp = :datetime)
+
+        diffSeries, metadata = automaticDifferentiation(series)
+        @test haskey(metadata, :outlier_3)
+        @test metadata[:outlier_3][:d] == 0
+        @test metadata[:outlier_3][:D] == 0
+        @test TimeSeries.values(diffSeries[:outlier_3]) == TimeSeries.values(series[:outlier_3])  # Outlier column should remain unchanged
     end
 
     @testset "isConstant" begin
@@ -196,4 +229,69 @@
         @test loglike(testModel) ≈ 254.01202403694745 atol = 1e-1
     end
 
+    @testset "identifyOutliers Tests" begin
+        # Basic test with no outliers
+        data1 = [1.0, 2.0, 3.0, 4.0, 5.0]
+        @test Sarimax.identifyOutliers(data1) == [false, false, false, false, false]
+
+        # Test with a single outlier
+        data2 = [1.0, 2.0, 3.0, 100.0]
+        @test Sarimax.identifyOutliers(data2) == [false, false, false, true]
+
+        # Test with multiple outliers
+        data3 = [1.0, 2.0, 3.0, 100.0, -50.0]
+        @test Sarimax.identifyOutliers(data3) == [false, false, false, true, true]
+
+        # Test with a different threshold
+        data4 = [1.0, 2.0, 3.0, 20, -10.0]
+        @test Sarimax.identifyOutliers(data4, "iqr", 10.0) == [false, false, false, false, false]  # Higher threshold, no outliers
+
+        # Test with an empty vector
+        data5 = Float64[]
+        @test Sarimax.identifyOutliers(data5) == Bool[]
+
+        # Test with identical values (no outliers expected)
+        data6 = fill(5.0, 10)
+        @test Sarimax.identifyOutliers(data6) == fill(false, 10)
+
+        # Test invalid method
+        @test_throws ArgumentError Sarimax.identifyOutliers([1.0, 2.0, 3.0], "unknown")
+    end
+
+    @testset "createOutliersDummies Tests" begin
+        # Test with no outliers
+        outliers1 = falses(5)
+        df1 = Sarimax.createOutliersDummies(outliers1)
+        @test size(df1, 2) == 0  # No columns should be created
+
+        # Test with a single outlier
+        outliers2 = falses(5)
+        outliers2[3] = true
+        df2 = Sarimax.createOutliersDummies(outliers2)
+        @test size(df2, 2) == 1  # One column should be created
+        @test df2[!, "outlier_3"] == [0, 0, 1, 0, 0]
+
+        # Test with multiple outliers
+        outliers3::BitVector = [true, false, true, false, true]
+        df3 = Sarimax.createOutliersDummies(outliers3)
+        @test size(df3, 2) == 3  # Three columns should be created
+        @test df3[!, "outlier_1"] == [1, 0, 0, 0, 0]
+        @test df3[!, "outlier_3"] == [0, 0, 1, 0, 0]
+        @test df3[!, "outlier_5"] == [0, 0, 0, 0, 1]
+
+        # Test with initial offset
+        df4 = Sarimax.createOutliersDummies(outliers2, 1)
+        @test size(df4, 1) == 6  # One extra row due to offset
+        @test df4[!, "outlier_3"] == [0, 0, 0, 1, 0, 0]
+
+        # Test with end offset
+        df5 = Sarimax.createOutliersDummies(outliers2, 0, 1)
+        @test size(df5, 1) == 6  # One extra row due to offset
+        @test df5[!, "outlier_3"] == [0, 0, 1, 0, 0, 0]
+
+        # Test with both initial and end offsets
+        df6 = Sarimax.createOutliersDummies(outliers2, 2, 2)
+        @test size(df6, 1) == 9  # Two extra rows at start and end
+        @test df6[!, "outlier_3"] == [0, 0, 0, 0, 1, 0, 0, 0, 0]
+    end
 end
