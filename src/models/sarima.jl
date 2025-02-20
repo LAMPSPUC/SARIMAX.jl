@@ -1250,7 +1250,7 @@ function auto(
     allowMean::Union{Bool,Nothing} = nothing,
     allowDrift::Union{Bool,Nothing} = nothing,
     integrationTest::String = "kpss",
-    g::String = "seas",
+    seasonalIntegrationTest::String = "seas",
     objectiveFunction::String = "mse",
     assertStationarity::Bool = true,
     assertInvertibility::Bool = true,
