@@ -11,7 +11,7 @@ function generateARseries(
     Random.seed!(seed)
     #Error terms:
     if error
-        whiteNoise = randn(200) # Normal distribution mean = 0 and std error = 1 
+        whiteNoise = randn(200) # Normal distribution mean = 0 and std error = 1
     else
         whiteNoise = zeros(200)
     end
@@ -134,7 +134,86 @@ end
         @test modelAutoFixedD.d != modelAutoExog.d
     end
 
-    # @testset "fit M4 series" begin 
+    @testset "ridge_fit" begin
+        airPassengers = loadDataset(AIR_PASSENGERS)
+        airPassengersLog = log.(airPassengers)
+        modelRidge = SARIMA(airPassengersLog, 3, 0, 1; seasonality = 12, P = 1, D = 1, Q = 1)
+        fit!(modelRidge; objectiveFunction = "ridge")
+        modelNoRidge = SARIMA(airPassengersLog, 3, 0, 1; seasonality = 12, P = 1, D = 1, Q = 1)
+        fit!(modelNoRidge)
+        @test modelRidge.ϕ != modelNoRidge.ϕ
+        @test modelRidge.Φ != modelNoRidge.Φ
+
+        # Test ridge with exogenous variable
+        lengthAirPassengers = length(airPassengersLog)
+        exogenous =
+            TimeArray(timestamp(airPassengers), [0.5 * i for i = 1:lengthAirPassengers])
+        modelRidgeExog = auto(
+            airPassengersLog;
+            exog = exogenous,
+            seasonality = 12,
+            objectiveFunction = "ridge",
+            showLogs = false,
+        )
+        @test modelRidgeExog.ϕ != modelRidge.ϕ
+        @test modelRidgeExog.d == modelRidge.d
+        @test modelRidgeExog.D != modelRidge.D
+    end
+
+    @testset "lasso_fit" begin
+        airPassengers = loadDataset(AIR_PASSENGERS)
+        airPassengersLog = log.(airPassengers)
+        modelLasso = SARIMA(airPassengersLog, 3, 0, 1; seasonality = 12, P = 1, D = 1, Q = 1)
+        fit!(modelLasso; objectiveFunction = "lasso")
+        modelNoLasso = SARIMA(airPassengersLog, 3, 0, 1; seasonality = 12, P = 1, D = 1, Q = 1)
+        fit!(modelNoLasso)
+        @test modelLasso.ϕ != modelNoLasso.ϕ
+        @test modelLasso.Φ != modelNoLasso.Φ
+
+        # Test lasso with exogenous variable
+        lengthAirPassengers = length(airPassengersLog)
+        exogenous =
+            TimeArray(timestamp(airPassengers), [0.5 * i for i = 1:lengthAirPassengers])
+        modelLassoExog = auto(
+            airPassengersLog;
+            exog = exogenous,
+            seasonality = 12,
+            objectiveFunction = "lasso",
+            showLogs = false,
+        )
+        @test modelLassoExog.ϕ != modelLasso.ϕ
+        @test modelLassoExog.d == modelLasso.d
+        @test modelLassoExog.D != modelLasso.D
+    end
+
+    @testset "bilevel_fit" begin
+        airPassengers = loadDataset(AIR_PASSENGERS)
+        airPassengersLog = log.(airPassengers)
+        modelBILEVEL = SARIMA(airPassengersLog, 3, 0, 1; seasonality = 12, P = 1, D = 1, Q = 1)
+        fit!(modelBILEVEL; objectiveFunction = "bilevel")
+        modelNoBILEVEL = SARIMA(airPassengersLog, 3, 0, 1; seasonality = 12, P = 1, D = 1, Q = 1)
+        fit!(modelNoBILEVEL)
+        @test modelBILEVEL.ϕ != modelNoBILEVEL.ϕ
+        @test modelBILEVEL.Φ != modelNoBILEVEL.Φ
+
+        # Test bilevel with exogenous variable
+        lengthAirPassengers = length(airPassengersLog)
+        exogenous =
+            TimeArray(timestamp(airPassengers), [0.5 * i for i = 1:lengthAirPassengers])
+        modelBILEVELExog = auto(
+            airPassengersLog;
+            exog = exogenous,
+            seasonality = 12,
+            objectiveFunction = "bilevel",
+            showLogs = false,
+        )
+        @test modelBILEVELExog.ϕ != modelBILEVEL.ϕ
+        @test modelBILEVELExog.d == modelBILEVEL.d
+        @test modelBILEVELExog.D != modelBILEVEL.D
+    end
+
+
+    # @testset "fit M4 series" begin
     #     test_series_json = JSON.parsefile("datasets/series_38351.json")
     #     train_dict = Dict{String,Vector{Float64}}("train" => test_series_json["train"])
     #     test_series_df = DataFrame(train_dict)
