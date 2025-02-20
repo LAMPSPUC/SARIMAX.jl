@@ -206,7 +206,7 @@ function SARIMA(
         )
     end
 
-    if !isnothing(exog) && islength(colnames(exog)) != length(exogCoefficients)
+    if !isnothing(exog) && length(colnames(exog)) != length(exogCoefficients)
         throw(
             InvalidParametersCombination(
                 "The number of exogenous coefficients must match the number of exogenous variables",
@@ -794,7 +794,7 @@ function optimizeModel!(jumpModel::Model, model::SARIMAModel, objectiveFunction:
         if model.q + model.Q > 0
             ma_lower_bound = -1 .* ones(model.q + model.Q)
             ma_upper_bound = ones(model.q + model.Q)
-            initialCoefficients = zeros(model.q + model.Q)# vcat(parameter_value.(θ),parameter_value.(Θ))# 
+            initialCoefficients = zeros(model.q + model.Q)# vcat(parameter_value.(θ),parameter_value.(Θ))#
             results = Optim.optimize(
                 optimizeMA,
                 ma_lower_bound,
@@ -915,7 +915,7 @@ end
     forecastErrors(model::SARIMAModel, maxLags::Int=12)
 
     The function computes the forecast errors for the SARIMA model using the estimated σ² and the MA coefficients.
-    
+
     # Arguments
     - `model::SARIMAModel`: The SARIMA model.
     - `maxLags::Int=12`: The maximum number of lags to include in the forecast errors.
@@ -924,7 +924,7 @@ end
     - `computedForecastErrors::Vector{Fl}`: The computed forecast errors.
 
     # References
-    - Brockwell, P. J., & Davis, R. A. Time Series: Theory and Methods (page 92). Springer(2009) 
+    - Brockwell, P. J., & Davis, R. A. Time Series: Theory and Methods (page 92). Springer(2009)
 """
 function forecastErrors(model::SARIMAModel, maxLags::Int = 12)
     ψ = toMA(model, maxLags)
@@ -1015,7 +1015,7 @@ end
 
 """
     predict(
-        model::SARIMAModel, 
+        model::SARIMAModel,
         stepsAhead::Int = 1,
         isSimulation::Bool = true,
         automaticExogDifferentiation::Bool=false
@@ -1132,8 +1132,8 @@ end
 
 """
     simulate(
-        model::SARIMAModel, 
-        stepsAhead::Int = 1, 
+        model::SARIMAModel,
+        stepsAhead::Int = 1,
         numScenarios::Int = 200,
         seed::Int = 1234
     )
@@ -1250,7 +1250,7 @@ function auto(
     allowMean::Union{Bool,Nothing} = nothing,
     allowDrift::Union{Bool,Nothing} = nothing,
     integrationTest::String = "kpss",
-    seasonalIntegrationTest::String = "seas",
+    g::String = "seas",
     objectiveFunction::String = "mse",
     assertStationarity::Bool = true,
     assertInvertibility::Bool = true,
@@ -1482,8 +1482,8 @@ end
 
 """
     constantSeriesModelSpecification(
-        y::TimeArray, 
-        exog::Union{TimeArray,Nothing}, 
+        y::TimeArray,
+        exog::Union{TimeArray,Nothing},
         allowMean::Bool
     )
 
@@ -1509,12 +1509,12 @@ end
 
 """
     constantDiffSeriesModelSpecification(
-        y::TimeArray, 
-        exog::Union{TimeArray,Nothing}, 
-        d::Int, 
-        D::Int, 
-        seasonality::Int, 
-        allowMean::Bool, 
+        y::TimeArray,
+        exog::Union{TimeArray,Nothing},
+        d::Int,
+        D::Int,
+        seasonality::Int,
+        allowMean::Bool,
         allowDrift::Bool
     )
 
@@ -1544,7 +1544,7 @@ function constantDiffSeriesModelSpecification(
 )
     if isnothing(exog)
         if (D > 0 && d == 0)
-            # TODO: Check if it is necessary to specify the intercept value 
+            # TODO: Check if it is necessary to specify the intercept value
             # constant should be mean(dy) / seasonality
             model = SARIMA(
                 y,
@@ -1574,7 +1574,7 @@ function constantDiffSeriesModelSpecification(
         elseif (d == 2)
             model = SARIMA(y, 0, d, 0; allowMean = false, allowDrift = false)
         elseif (d < 2)
-            # TODO: Check if it is necessary to specify the intercept value 
+            # TODO: Check if it is necessary to specify the intercept value
             # constant should be mean(dy)
             model = SARIMA(y, 0, d, 0; allowMean = true, allowDrift = false)
         else
@@ -1611,10 +1611,10 @@ end
 
 """
     computeModelsICOffset(
-        y::TimeArray, 
-        exog::Union{TimeArray,Nothing}, 
-        d::Int, 
-        D::Int, 
+        y::TimeArray,
+        exog::Union{TimeArray,Nothing},
+        d::Int,
+        D::Int,
         seasonality::Int
     )
 
@@ -1662,11 +1662,11 @@ end
 
 """
     detectOutliers(
-        y::TimeArray, 
-        exog::Union{TimeArray,Nothing}, 
-        d::Int, 
-        D::Int, 
-        seasonality::Int, 
+        y::TimeArray,
+        exog::Union{TimeArray,Nothing},
+        d::Int,
+        D::Int,
+        seasonality::Int,
         showLogs::Bool
     )
 
@@ -1754,12 +1754,12 @@ end
 
 """
     initialNonSeasonalModels!(
-        models::Vector{SARIMAModel}, 
+        models::Vector{SARIMAModel},
         y::TimeArray,
-        exog::Union{TimeArray,Nothing}, 
-        maxp::Int, 
-        d::Int, 
-        maxq::Int, 
+        exog::Union{TimeArray,Nothing},
+        maxp::Int,
+        d::Int,
+        maxq::Int,
         allowMean::Bool,
         allowDrift::Bool
     )
@@ -1809,16 +1809,16 @@ end
 
 """
     initialSeasonalModels!(
-        models::Vector{SARIMAModel}, 
+        models::Vector{SARIMAModel},
         y::TimeArray,
-        exog::Union{TimeArray,Nothing}, 
-        maxp::Int, 
-        d::Int, 
-        maxq::Int, 
-        maxP::Int, 
-        D::Int, 
-        maxQ::Int, 
-        seasonality::Int, 
+        exog::Union{TimeArray,Nothing},
+        maxp::Int,
+        d::Int,
+        maxq::Int,
+        maxP::Int,
+        D::Int,
+        maxQ::Int,
+        seasonality::Int,
         allowMean::Bool,
         allowDrift::Bool
     )
@@ -2111,7 +2111,7 @@ julia> visitedModels = Dict{String,Dict{String,Any}}()
 
 julia> informationCriteriaFunction = aicc
 
-julia> localSearch!(candidateModels, visitedModels, informationCriteriaFunction)  
+julia> localSearch!(candidateModels, visitedModels, informationCriteriaFunction)
 ```
 """
 function localSearch!(
@@ -2153,11 +2153,11 @@ end
 
 """
     addNonSeasonalModels!(
-        bestModel::SARIMAModel, 
+        bestModel::SARIMAModel,
         candidateModels::Vector{SARIMAModel},
-        visitedModels::Dict{String,Dict{String,Any}},  
-        maxp::Int, 
-        maxq::Int, 
+        visitedModels::Dict{String,Dict{String,Any}},
+        maxp::Int,
+        maxq::Int,
         maxOrder::Int,
         allowMean::Bool,
         allowDrift::Bool,
@@ -2227,11 +2227,11 @@ end
 
 """
     addSeasonalModels!(
-        bestModel::SARIMAModel, 
+        bestModel::SARIMAModel,
         candidateModels::Vector{SARIMAModel},
-        visitedModels::Dict{String,Dict{String,Any}}, 
-        maxP::Int, 
-        maxQ::Int, 
+        visitedModels::Dict{String,Dict{String,Any}},
+        maxP::Int,
+        maxQ::Int,
         maxOrder::Int,
         allowMean::Bool,
         allowDrift::Bool,
@@ -2305,14 +2305,14 @@ end
 
 """
     addNonSeasonalAndSeasonalModels!(
-        bestModel::SARIMAModel, 
+        bestModel::SARIMAModel,
         candidateModels::Vector{SARIMAModel},
         visitedModels::Dict{String,Dict{String,Any}},
         maxp::Int,
-        maxq::Int, 
-        maxP::Int, 
+        maxq::Int,
+        maxP::Int,
         maxQ::Int,
-        maxOrder::Int, 
+        maxOrder::Int,
         allowMean::Bool,
         allowDrift::Bool,
         fixConstant::Bool
@@ -2440,26 +2440,26 @@ end
 
 """
     stepWiseSearchNaive(
-        y::TimeArray, 
-        exog::Union{TimeArray,Nothing}, 
-        d::Int, 
-        D::Int, 
-        seasonality::Int, 
-        informationCriteriaFunction::Function; 
-        maxp::Int=5, 
-        maxq::Int=5, 
-        maxP::Int=2, 
-        maxQ::Int=2, 
-        maxOrder::Int=5, 
-        objectiveFunction::String = "mse", 
-        assertStationarity::Bool = false, 
+        y::TimeArray,
+        exog::Union{TimeArray,Nothing},
+        d::Int,
+        D::Int,
+        seasonality::Int,
+        informationCriteriaFunction::Function;
+        maxp::Int=5,
+        maxq::Int=5,
+        maxP::Int=2,
+        maxQ::Int=2,
+        maxOrder::Int=5,
+        objectiveFunction::String = "mse",
+        assertStationarity::Bool = false,
         assertInvertibility::Bool = false,
         allowMean::Bool = true,
-        allowDrift::Bool = false, 
-        showLogs::Bool = false, 
+        allowDrift::Bool = false,
+        showLogs::Bool = false,
         icOffset::Fl = 0.0
     ) where Fl <: AbstractFloat
-    
+
 Performs a naive stepwise search to find the best SARIMA model based on the specified parameters.
 
 # Arguments
@@ -2632,10 +2632,10 @@ end
         startP::Int=1,
         startQ::Int=1,
         maxp::Int=5,
-        maxq::Int=5, 
-        maxP::Int=2, 
-        maxQ::Int=2, 
-        maxOrder::Int=5, 
+        maxq::Int=5,
+        maxP::Int=2,
+        maxQ::Int=2,
+        maxOrder::Int=5,
         objectiveFunction::String = "mse",
         assertStationarity::Bool = false,
         assertInvertibility::Bool = false,
@@ -3578,23 +3578,23 @@ end
 
 """
     gridSearch(
-        y::TimeArray, 
-        exog::Union{TimeArray,Nothing}, 
-        d::Int, 
-        D::Int, 
-        seasonality::Int, 
-        informationCriteriaFunction::Function; 
-        maxp::Int=5, 
-        maxq::Int=5, 
-        maxP::Int=2, 
-        maxQ::Int=2, 
-        maxOrder::Int=5, 
-        objectiveFunction::String = "mse", 
-        assertStationarity::Bool = false, 
+        y::TimeArray,
+        exog::Union{TimeArray,Nothing},
+        d::Int,
+        D::Int,
+        seasonality::Int,
+        informationCriteriaFunction::Function;
+        maxp::Int=5,
+        maxq::Int=5,
+        maxP::Int=2,
+        maxQ::Int=2,
+        maxOrder::Int=5,
+        objectiveFunction::String = "mse",
+        assertStationarity::Bool = false,
         assertInvertibility::Bool = false,
         allowMean::Bool = false,
-        allowDrift::Bool = false, 
-        showLogs::Bool = false, 
+        allowDrift::Bool = false,
+        showLogs::Bool = false,
         icOffset::Fl = 0.0
     ) where Fl <: AbstractFloat
 
