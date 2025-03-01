@@ -10,7 +10,12 @@ using Revise
 using JSON
 
 # Testes dos modelos
+
+include("models/sarima_base.jl")
+
 include("models/sarima.jl")
+
+include("models/sarima_auto.jl")
 
 include("models/sarima_fit.jl")
 
