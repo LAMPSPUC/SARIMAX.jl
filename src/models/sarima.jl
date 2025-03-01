@@ -1202,6 +1202,7 @@ end
         assertInvertibility::Bool = true,
         showLogs::Bool = false,
         outlierDetection::Bool = false
+        searchMethod::String = "stepwise"
     )
 
 Automatically fits the best SARIMA model according to the specified parameters.
@@ -1229,6 +1230,7 @@ Automatically fits the best SARIMA model according to the specified parameters.
 - `assertInvertibility::Bool`: Whether to assert invertibility of the fitted model. Default is true.
 - `showLogs::Bool`: Whether to suppress output. Default is false.
 - `outlierDetection::Bool`: Whether to perform outlier detection. Default is false.
+- searchMethod::String = "stepwise"
 
 # References
 - Hyndman, RJ and Khandakar. "Automatic time series forecasting: The forecast package for R." Journal of Statistical Software, 26(3), 2008.
@@ -1405,7 +1407,7 @@ function auto(
             allowDrift = allowDrift,
         )
     elseif searchMethod == "stepwiseNaive"
-        bestModel = stepwiseSearchNaive(
+        bestModel = stepWiseSearchNaive(
             y,
             exog,
             d,
@@ -1424,6 +1426,7 @@ function auto(
             icOffset = offset,
             allowMean = allowMean,
             allowDrift = allowDrift,
+            fixConstant = fixConstant
         )
     elseif searchMethod == "grid"
         bestModel = gridSearch(
@@ -1588,7 +1591,7 @@ function constantDiffSeriesModelSpecification(
         if (D > 0)
             model = SARIMA(
                 y,
-                model.exog,
+                exog,
                 0,
                 d,
                 0;
@@ -1600,7 +1603,7 @@ function constantDiffSeriesModelSpecification(
                 allowDrift = false,
             )
         else
-            model = SARIMA(y, model.exog, 0, d, 0; allowMean = false, allowDrift = false)
+            model = SARIMA(y, exog, 0, d, 0; allowMean = false, allowDrift = false)
         end
     end
 
@@ -1721,7 +1724,7 @@ function detectOutliers(
     end
 
     originalOffset = length(values(y)) - length(residuals)
-    println("Original Offset: ", originalOffset)
+    # println("Original Offset: ", originalOffset)
     outliersIndex = findall(outliers .== 1.0) .+ originalOffset
     showLogs && @info("Outliers detected at indices: $(outliersIndex)")
 
@@ -1746,7 +1749,8 @@ function detectOutliers(
         dummyDataFrame = createOutliersDummies((outliers .== 1.0), initialOffset, endOffset)
         dummyDataFrame[!, :date] = copy(filterExogTimestamps)
         dummyTimeArray = TimeArray(dummyDataFrame, timestamp = :date)
-        exog = merge(exog, dummyTimeArray)
+        mergeVector::Vector{TimeArray} = [exog, dummyTimeArray]
+        exog = Sarimax.merge(mergeVector)
     end
 
     return exog
@@ -2458,6 +2462,7 @@ end
         allowDrift::Bool = false,
         showLogs::Bool = false,
         icOffset::Fl = 0.0
+        fixConstant::Bool = false
     ) where Fl <: AbstractFloat
 
 Performs a naive stepwise search to find the best SARIMA model based on the specified parameters.
@@ -2482,6 +2487,7 @@ Performs a naive stepwise search to find the best SARIMA model based on the spec
 - `allowDrift::Bool`: Whether to include a drift term in the model. Default is false.
 - `showLogs::Bool`: Whether to suppress output. Default is false.
 - `icOffset::Fl`: The offset to be added to the information criteria. Default is 0.0.
+- `fixConstant::Bool`: Whether to fix the constant term. Default is false.
 
 # Returns
 
@@ -2506,6 +2512,7 @@ function stepWiseSearchNaive(
     allowDrift::Bool = false,
     showLogs::Bool = false,
     icOffset::Fl = 0.0,
+    fixConstant::Bool = false,
 ) where {Fl<:AbstractFloat}
     # Include initial models
     candidateModels = Vector{SARIMAModel}()

@@ -1,10 +1,8 @@
-import Base: copy, deepcopy
-
-function Base.copy(y::TimeArray)
+function TimeSeries.copy(y::TimeSeries.TimeArray)
     return TimeArray(copy(timestamp(y)), copy(values(y)))
 end
 
-function Base.deepcopy(y::TimeArray)
+function TimeSeries.deepcopy(y::TimeSeries.TimeArray)
     return TimeArray(deepcopy(timestamp(y)), deepcopy(values(y)))
 end
 
@@ -206,9 +204,10 @@ function merge(timeArrayVector::Vector{TimeArray}, modelFl::DataType = Float64)
     auxiliarDf = DataFrame((:timestamp => timestamp(newTimeArrayVector[1])))
     for ta in newTimeArrayVector
         # Add a column with ta colname and values
-        colname = colnames(ta)[1]
-        valuesTa::Vector{modelFl} = values(ta)
-        auxiliarDf[!, colname] = valuesTa
+        for (i,colname) in enumerate(colnames(ta))
+            valuesTa::Array{modelFl} = Array{modelFl}(values(ta)[:,i])
+            auxiliarDf[!, colname] = valuesTa
+        end
     end
 
     return TimeArray(auxiliarDf, timestamp = :timestamp)
